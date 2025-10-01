@@ -1,0 +1,4 @@
+**/*.dSYM
+bin
+.idea
+.DS_Store
