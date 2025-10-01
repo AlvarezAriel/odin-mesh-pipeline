@@ -13,18 +13,6 @@ import glm "core:math/linalg/glsl"
 
 SHADER_SOURCE :: #load("./shaders/pipeline.metal", string)
 
-Instance_Data :: struct #align(16) {
-    transform: glm.mat4,
-    color:     glm.vec4,
-}
-
-NUM_INSTANCES :: 32
-
-Camera_Data :: struct {
-    perspective_transform: glm.mat4,
-    world_transform:       glm.mat4,
-}
-
 build_shaders :: proc(device: ^MTL.Device) -> (library: ^MTL.Library, pso: ^MTL.RenderPipelineState, err: ^NS.Error) {
     shader_src_str := NS.String.alloc()->initWithOdinString(SHADER_SOURCE)
     defer shader_src_str->release()
@@ -89,9 +77,6 @@ metal_main :: proc() -> (err: ^NS.Error) {
     defer library->release()
     defer pso->release()
 
-    camera_buffer := device->newBuffer(size_of(Camera_Data), {.StorageModeManaged})
-    defer camera_buffer->release()
-
     command_queue := device->newCommandQueue()
     defer command_queue->release()
 
@@ -106,17 +91,6 @@ metal_main :: proc() -> (err: ^NS.Error) {
                     quit = true
                 }
             }
-        }
-
-        w, h: i32
-        SDL.GetWindowSize(window, &w, &h)
-        aspect_ratio := f32(w)/max(f32(h), 1)
-
-        {
-            camera_data := camera_buffer->contentsAsType(Camera_Data)
-            camera_data.perspective_transform = glm.mat4Perspective(glm.radians_f32(45), aspect_ratio, 0.03, 500)
-            camera_data.world_transform = 1
-            camera_buffer->didModifyRange(NS.Range_Make(0, size_of(Camera_Data)))
         }
 
         drawable := swapchain->nextDrawable()
