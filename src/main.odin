@@ -4,12 +4,13 @@ import NS  "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
 import CA  "vendor:darwin/QuartzCore"
 
-import SDL "vendor:sdl2"
+import SDL3 "vendor:sdl3"
 
 import "core:fmt"
+import "core:log"
+import "core:mem"
 import "core:os"
-import "core:math"
-import glm "core:math/linalg/glsl"
+import "core:time"
 
 SHADER_SOURCE :: #load("./shaders/pipeline.metal", string)
 
@@ -37,29 +38,34 @@ build_shaders :: proc(device: ^MTL.Device) -> (library: ^MTL.Library, pso: ^MTL.
 }
 
 metal_main :: proc() -> (err: ^NS.Error) {
-    SDL.SetHint(SDL.HINT_RENDER_DRIVER, "metal")
-    SDL.setenv("METAL_DEVICE_WRAPPER_TYPE", "1", 0)
-    SDL.Init({.VIDEO})
-    defer SDL.Quit()
+    cl := log.create_console_logger()
+	context.logger = cl
 
-    window := SDL.CreateWindow("Metal Mesh Pipeline",
-        SDL.WINDOWPOS_CENTERED, SDL.WINDOWPOS_CENTERED,
-        854, 480,
-        {.ALLOW_HIGHDPI, .HIDDEN, .RESIZABLE},
-    )
-    defer SDL.DestroyWindow(window)
+    tracking_allocator: mem.Tracking_Allocator
+	mem.tracking_allocator_init(&tracking_allocator, context.allocator)
+    context.allocator = mem.tracking_allocator(&tracking_allocator)
+	defer reset_tracking_allocator()
 
-    window_system_info: SDL.SysWMinfo
-    SDL.GetVersion(&window_system_info.version)
-    SDL.GetWindowWMInfo(window, &window_system_info)
-    assert(window_system_info.subsystem == .COCOA)
-
-    native_window := (^NS.Window)(window_system_info.info.cocoa.window)
+	if !SDL3.Init({.VIDEO}) {
+		log.fatalf("unable to initialize sdl, error: %s", SDL3.GetError())
+	}
 
     device := MTL.CreateSystemDefaultDevice()
-    defer device->release()
+    if device == nil {
+		log.fatal("unable to initialize gpu METAL device")
+	}
 
-    fmt.println(device->name()->odinString())
+    window := SDL3.CreateWindow("sdl demo", 800, 600, {.HIGH_PIXEL_DENSITY, .RESIZABLE, .METAL})
+	if window == nil {
+		log.fatalf("unable to initialize window, error: %s", SDL3.GetError())
+	}
+
+    native_window := (^NS.Window)(SDL3.GetPointerProperty(SDL3.GetWindowProperties(window), SDL3.PROP_WINDOW_COCOA_WINDOW_POINTER, nil))
+    if (native_window == nil) {
+        log.fatal("unable to fetch native window info")
+    }
+
+	fmt.println(device->name()->odinString())
 
     swapchain := CA.MetalLayer.layer()
     defer swapchain->release()
@@ -80,18 +86,25 @@ metal_main :: proc() -> (err: ^NS.Error) {
     command_queue := device->newCommandQueue()
     defer command_queue->release()
 
-    SDL.ShowWindow(window)
+    SDL3.ShowWindow(window)
+    start_tick := time.tick_now()
+    event: SDL3.Event
+
     for quit := false; !quit;  {
-        for e: SDL.Event; SDL.PollEvent(&e); {
-            #partial switch e.type {
-            case .QUIT:
-                quit = true
-            case .KEYDOWN:
-                if e.key.keysym.sym == .ESCAPE {
-                    quit = true
-                }
-            }
-        }
+
+        duration := time.tick_since(start_tick)
+		elapsed_time := f32(time.duration_seconds(duration))
+
+		for SDL3.PollEvent(&event) {
+            // TODO: here send input to engine
+
+			#partial switch event.type {
+            case .WINDOW_RESIZED:
+                update_window_size()
+			case .QUIT:
+				quit = true
+			}
+		}
 
         drawable := swapchain->nextDrawable()
         assert(drawable != nil)
@@ -127,10 +140,29 @@ metal_main :: proc() -> (err: ^NS.Error) {
     return nil
 }
 
+update_window_size :: proc() {
+    // SDL.GetWindowSize(ctx.window, &ctx.window_size[0], &ctx.window_size[1])
+}
+
 main :: proc() {
     err := metal_main()
     if err != nil {
         fmt.eprintln(err->localizedDescription()->odinString())
         os.exit(1)
     }
+}
+
+reset_tracking_allocator :: proc() -> bool {
+	a := cast(^mem.Tracking_Allocator)context.allocator.data
+	err := false
+	if len(a.allocation_map) > 0 {
+		log.warnf("Leaked allocation count: %v", len(a.allocation_map))
+	}
+	for _, v in a.allocation_map {
+		log.warnf("%v: Leaked %v bytes", v.location, v.size)
+		err = true
+	}
+
+	mem.tracking_allocator_clear(a)
+	return err
 }
