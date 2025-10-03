@@ -35,10 +35,10 @@ init :: proc(device: ^MTL.Device, buffers: ^EngineBuffers) {
     state.camera = buffers.camera_buffer->contentsAsType(Camera)
 }
 
-update :: proc(delta: time.Duration, buffers: ^EngineBuffers) {
+update :: proc(delta: time.Duration, aspect: f32, buffers: ^EngineBuffers) {
     
     view := glm.mat4LookAt({0, 0, 2}, {0, 0, 0}, {0, 1, 0})
-    proj := glm.mat4Perspective(45, 1.3, 0.1, 100.0)
+    proj := glm.mat4Perspective(45, aspect, 0.1, 100.0)
 
     state.camera.transform = proj * view
 

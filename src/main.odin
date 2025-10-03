@@ -17,11 +17,8 @@ import "engine"
 
 SHADER_SOURCE :: #load("./shaders/pipeline.metal", string)
 
-Camera_Data :: struct #align(16) {
-	transform:  glm.mat4,
-}
-
 engine_buffers: engine.EngineBuffers
+pixel_density: f32
 
 
 build_shaders :: proc(device: ^MTL.Device) -> (library: ^MTL.Library, pso: ^MTL.RenderPipelineState, err: ^NS.Error) {
@@ -79,7 +76,7 @@ metal_main :: proc() -> (err: ^NS.Error) {
 		log.fatal("unable to initialize gpu METAL device")
 	}
 
-    window := SDL3.CreateWindow("sdl demo", 800, 600, {.HIGH_PIXEL_DENSITY, .RESIZABLE, .METAL})
+    window := SDL3.CreateWindow("sdl demo", 1000, 1000, {.HIGH_PIXEL_DENSITY, .RESIZABLE, .METAL})
 	if window == nil {
 		log.fatalf("unable to initialize window, error: %s", SDL3.GetError())
 	}
@@ -93,6 +90,14 @@ metal_main :: proc() -> (err: ^NS.Error) {
 
     swapchain := CA.MetalLayer.layer()
     defer swapchain->release()
+
+    w, h: i32
+
+    // 
+    SDL3.GetWindowSizeInPixels(window, &w,&h)
+    log.debug("window size in pixels", w, h)
+    renderer := SDL3.GetRenderer(window)
+    SDL3.SetRenderLogicalPresentation(renderer, w, h, .LETTERBOX)
 
     swapchain->setDevice(device)
     swapchain->setPixelFormat(.BGRA8Unorm_sRGB)
@@ -120,6 +125,8 @@ metal_main :: proc() -> (err: ^NS.Error) {
     last_frame_time := time.tick_now()
     event: SDL3.Event
 
+
+
     depth_texture: ^MTL.Texture = nil
 	defer if depth_texture != nil { depth_texture->release() }
 
@@ -146,7 +153,7 @@ metal_main :: proc() -> (err: ^NS.Error) {
 			}
 		}
 
-        engine.update(delta, &engine_buffers)
+        engine.update(delta, aspect_ratio, &engine_buffers)
 
         if depth_texture == nil ||
 		   depth_texture->width() != NS.UInteger(w) ||
@@ -168,7 +175,6 @@ metal_main :: proc() -> (err: ^NS.Error) {
 
 			depth_texture = device->newTextureWithDescriptor(desc)
 		}
-
 
         drawable := swapchain->nextDrawable()
         assert(drawable != nil)
