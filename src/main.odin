@@ -91,13 +91,13 @@ metal_main :: proc() -> (err: ^NS.Error) {
     swapchain := CA.MetalLayer.layer()
     defer swapchain->release()
 
-    w, h: i32
-
-    // 
-    SDL3.GetWindowSizeInPixels(window, &w,&h)
-    log.debug("window size in pixels", w, h)
-    renderer := SDL3.GetRenderer(window)
-    SDL3.SetRenderLogicalPresentation(renderer, w, h, .LETTERBOX)
+    {
+        w, h: i32
+        SDL3.GetWindowSizeInPixels(window, &w,&h)
+        log.debug("window size in pixels", w, h)
+        renderer := SDL3.GetRenderer(window)
+        SDL3.SetRenderLogicalPresentation(renderer, w, h, .LETTERBOX)
+    }
 
     swapchain->setDevice(device)
     swapchain->setPixelFormat(.BGRA8Unorm_sRGB)
@@ -208,7 +208,7 @@ metal_main :: proc() -> (err: ^NS.Error) {
         render_encoder->setMeshBuffer(buffer=engine_buffers.camera_buffer,   offset=0, index=0)
 
         // TODO: the thread values are just for the example, use proper ones later!!
-        render_encoder->drawMeshThreadgroups(MTL.Size { 1,1,1 }, MTL.Size { 0,0,0 }, MTL.Size { 1,1,1 })
+        render_encoder->drawMeshThreadgroups(MTL.Size { 128,1,1 }, MTL.Size { 0,0,0 }, MTL.Size { 1,1,1 })
 
         render_encoder->endEncoding()
 
