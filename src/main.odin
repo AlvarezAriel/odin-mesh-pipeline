@@ -12,7 +12,17 @@ import "core:mem"
 import "core:os"
 import "core:time"
 
+import glm "core:math/linalg/glsl"
+import "engine"
+
 SHADER_SOURCE :: #load("./shaders/pipeline.metal", string)
+
+Camera_Data :: struct #align(16) {
+	transform:  glm.mat4,
+}
+
+engine_buffers: engine.EngineBuffers
+
 
 build_shaders :: proc(device: ^MTL.Device) -> (library: ^MTL.Library, pso: ^MTL.RenderPipelineState, err: ^NS.Error) {
     shader_src_str := NS.String.alloc()->initWithOdinString(SHADER_SOURCE)
@@ -31,9 +41,23 @@ build_shaders :: proc(device: ^MTL.Device) -> (library: ^MTL.Library, pso: ^MTL.
     desc->setMeshFunction(mesh_function)
     desc->setFragmentFunction(fragment_function)
     desc->colorAttachments()->object(0)->setPixelFormat(.BGRA8Unorm_sRGB)
-    desc->setDepthAttachmentPixelFormat(.Depth32Float)
+    desc->setDepthAttachmentPixelFormat(.Depth16Unorm)
+    desc->setRasterSampleCount(4)
 
     pso = device->newRenderPipelineStateWithMeshDescriptor(desc, nil, nil) or_return
+
+    return
+}
+
+build_depth_stencil :: proc(device: ^MTL.Device) -> (dso: ^MTL.DepthStencilState, err: ^NS.Error) {
+    desc := MTL.DepthStencilDescriptor.alloc()->init()
+    defer desc->release()
+
+    desc->setDepthCompareFunction(MTL.CompareFunction.Less);
+    desc->setDepthWriteEnabled(true);
+
+    dso = device->newDepthStencilState(desc)
+
     return
 }
 
@@ -83,17 +107,33 @@ metal_main :: proc() -> (err: ^NS.Error) {
     defer library->release()
     defer pso->release()
 
+    dso := build_depth_stencil(device) or_return
+    defer dso->release()
+
+    engine.init(device, &engine_buffers)
+    defer engine.release(&engine_buffers)
+
     command_queue := device->newCommandQueue()
     defer command_queue->release()
 
     SDL3.ShowWindow(window)
-    start_tick := time.tick_now()
+    last_frame_time := time.tick_now()
     event: SDL3.Event
 
+    depth_texture: ^MTL.Texture = nil
+	defer if depth_texture != nil { depth_texture->release() }
+
+
+    // TODO: migrate next example with camera!!!! https://github.com/chaoticbob/GraphicsExperiments/blob/main/projects/geometry/113_mesh_shader_instancing_metal/113_mesh_shader_instancing_metal.cpp
+    // TODO: Lookup anti-aliasing on the MeshShadersMetalCPP example on XCode
     for quit := false; !quit;  {
 
-        duration := time.tick_since(start_tick)
-		elapsed_time := f32(time.duration_seconds(duration))
+        delta := time.tick_since(last_frame_time)
+		last_frame_time = time.tick_now()
+        w, h: i32
+		SDL3.GetWindowSize(window, &w, &h)
+		aspect_ratio := f32(w)/max(f32(h), 1)
+
 
 		for SDL3.PollEvent(&event) {
             // TODO: here send input to engine
@@ -106,6 +146,30 @@ metal_main :: proc() -> (err: ^NS.Error) {
 			}
 		}
 
+        engine.update(delta, &engine_buffers)
+
+        if depth_texture == nil ||
+		   depth_texture->width() != NS.UInteger(w) ||
+		   depth_texture->height() != NS.UInteger(h) {
+			desc := MTL.TextureDescriptor.texture2DDescriptorWithPixelFormat(
+				pixelFormat = .Depth16Unorm,
+				width = NS.UInteger(w),
+				height = NS.UInteger(h),
+				mipmapped = false,
+			)
+			defer desc->release()
+
+			desc->setUsage({.RenderTarget})
+			desc->setStorageMode(.Private)
+
+			if depth_texture != nil {
+				depth_texture->release()
+			}
+
+			depth_texture = device->newTextureWithDescriptor(desc)
+		}
+
+
         drawable := swapchain->nextDrawable()
         assert(drawable != nil)
         defer drawable->release()
@@ -115,10 +179,16 @@ metal_main :: proc() -> (err: ^NS.Error) {
 
         color_attachment := pass->colorAttachments()->object(0)
         assert(color_attachment != nil)
-        color_attachment->setClearColor(MTL.ClearColor{0.25, 0.5, 1.0, 1.0})
+        color_attachment->setClearColor(MTL.ClearColor{0.0, 0.0, 0.0, 1.0})
         color_attachment->setLoadAction(.Clear)
         color_attachment->setStoreAction(.Store)
         color_attachment->setTexture(drawable->texture())
+
+		depth_attachment := pass->depthAttachment()
+		depth_attachment->setTexture(depth_texture)
+		depth_attachment->setClearDepth(1.0)
+		depth_attachment->setLoadAction(.Clear)
+		depth_attachment->setStoreAction(.Store)
 
         command_buffer := command_queue->commandBuffer()
         defer command_buffer->release()
@@ -127,6 +197,9 @@ metal_main :: proc() -> (err: ^NS.Error) {
         defer render_encoder->release()
 
         render_encoder->setRenderPipelineState(pso)
+        render_encoder->setDepthStencilState(dso);
+
+        render_encoder->setMeshBuffer(buffer=engine_buffers.camera_buffer,   offset=0, index=0)
 
         // TODO: the thread values are just for the example, use proper ones later!!
         render_encoder->drawMeshThreadgroups(MTL.Size { 1,1,1 }, MTL.Size { 0,0,0 }, MTL.Size { 1,1,1 })
