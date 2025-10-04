@@ -209,12 +209,13 @@ metal_main :: proc() -> (err: ^NS.Error) {
         defer render_encoder->release()
 
         render_encoder->setRenderPipelineState(pso)
-        render_encoder->setDepthStencilState(dso);
+        render_encoder->setDepthStencilState(dso)
+        render_encoder->setCullMode(.Back)
 
         render_encoder->setMeshBuffer(buffer=engine_buffers.camera_buffer,   offset=0, index=0)
 
         // TODO: the thread values are just for the example, use proper ones later!!
-        render_encoder->drawMeshThreadgroups(MTL.Size { 2,1,1 }, MTL.Size { 0,0,0 }, MTL.Size { 1,1,1 })
+        render_encoder->drawMeshThreadgroups(MTL.Size { 3,1,1 }, MTL.Size { 0,0,0 }, MTL.Size { 1,1,1 })
 
         render_encoder->endEncoding()
 

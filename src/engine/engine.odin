@@ -21,6 +21,8 @@ Player :: struct {
 Controls :: struct {
     left: f32,
     right: f32,
+    forward: f32,
+    back: f32,
     up: f32,
     down: f32,
 }
@@ -54,8 +56,8 @@ init :: proc(device: ^MTL.Device, buffers: ^EngineBuffers) {
     buffers.sparse_voxels_buffer = device->newBuffer(size_of(SparseVoxels), {.StorageModeManaged})
     state.sparse_voxels = buffers.sparse_voxels_buffer->contentsAsType(SparseVoxels)
 
-    state.player.pos  = { 0, 0.5, -4, 0}
-    state.player.look = glm.normalize(state.player.pos - { 0, 0, -1, 0}) 
+    state.player.pos  = { 0, 1.0, 4, 0}
+    state.player.look = { 0, 0, -1, 0}
     log.debug("initial look", state.player.look)
 }
 
@@ -66,13 +68,15 @@ update :: proc(delta: time.Duration, aspect: f32, buffers: ^EngineBuffers) {
 
     direction := glm.normalize(state.player.look * { 1, 0, 1, 0})
 
-    state.player.pos = state.player.pos + (direction * (state.controls.up - state.controls.down) * d)
+    state.player.pos = state.player.pos + (direction * (state.controls.forward - state.controls.back) * d)
 
     side_direction := side_look_dir()
     state.player.pos = state.player.pos + side_direction * (state.controls.left - state.controls.right) * d
 
-    view := glm.mat4LookAt(state.player.pos.xyz, state.player.pos.xyz + state.player.look.xyz, {0, 1, 0})
-    proj := glm.mat4Perspective(45, aspect, 0.1, 100.0)
+    state.player.pos = state.player.pos + {0, (state.controls.up - state.controls.down), 0, 0 } * d
+
+    view := glm.mat4LookAt(state.player.pos.xyz, state.player.pos.xyz + state.player.look.xyz, {0, -1, 0})
+    proj := glm.mat4Perspective(43, aspect, 0.05, 100.0)
 
     state.camera.transform = proj * view
 
@@ -100,13 +104,17 @@ input :: proc(event: ^SDL.Event) {
     
     switch event.key.key {
         case SDL.K_W:
-            state.controls.up = value
+            state.controls.forward = value
         case SDL.K_S:     
-            state.controls.down = value
+            state.controls.back = value
         case SDL.K_A:     
             state.controls.left = value
         case SDL.K_D:     
             state.controls.right = value
+        case SDL.K_LSHIFT:     
+            state.controls.down = value
+        case SDL.K_SPACE:     
+            state.controls.up = value
     }
 }
 
