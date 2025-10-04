@@ -12,7 +12,8 @@ import NS  "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
 
 Player :: struct {
-    pos: glm.vec3
+    pos: glm.vec3,
+    speed: glm.vec3,
 }
 
 Camera :: struct #align(16) {
@@ -46,7 +47,9 @@ init :: proc(device: ^MTL.Device, buffers: ^EngineBuffers) {
 
 update :: proc(delta: time.Duration, aspect: f32, buffers: ^EngineBuffers) {
     
-    view := glm.mat4LookAt({0, 20, 10}, {0, 0, 0}, {0, 1, 0})
+    d := f32(time.duration_seconds(delta))
+    state.player.pos = state.player.pos + (state.player.speed * d)
+    view := glm.mat4LookAt(state.player.pos, {0, 0, 0}, {0, 1, 0})
     proj := glm.mat4Perspective(45, aspect, 0.1, 100.0)
 
     state.camera.transform = proj * view
@@ -57,6 +60,31 @@ update :: proc(delta: time.Duration, aspect: f32, buffers: ^EngineBuffers) {
 
 
 
+}
+
+input :: proc(event: ^SDL.Event) {
+	#partial switch event.type {
+	case .KEY_DOWN:
+        if event.key.repeat == false {
+            value: f32 = 0
+            if event.key.down {
+                value = 1
+            }
+
+            switch event.key.key {
+                case SDL.K_W:
+                    state.player.speed.z = value
+                case SDL.K_S:     
+                    state.player.speed.z = -value
+                case SDL.K_A:     
+                    state.player.speed.x = -value    
+                case SDL.K_D:     
+                    state.player.speed.x = value  
+            }
+            log.debug(state.player, " key_down:", event.key.down)
+        }
+	}
+    
 }
 
 release :: proc(buffers: ^EngineBuffers) {

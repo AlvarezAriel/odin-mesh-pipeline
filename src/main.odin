@@ -90,19 +90,19 @@ metal_main :: proc() -> (err: ^NS.Error) {
 
     swapchain := CA.MetalLayer.layer()
     defer swapchain->release()
+    
+    w, h: i32
+    SDL3.GetWindowSizeInPixels(window, &w,&h)
 
-    {
-        w, h: i32
-        SDL3.GetWindowSizeInPixels(window, &w,&h)
-        log.debug("window size in pixels", w, h)
-        renderer := SDL3.GetRenderer(window)
-        SDL3.SetRenderLogicalPresentation(renderer, w, h, .LETTERBOX)
-    }
+    log.debug("window size in pixels", w, h, " display mode:",     SDL3.GetDisplayForWindow(window))
+    renderer := SDL3.GetRenderer(window)
+    SDL3.SetRenderLogicalPresentation(renderer, w, h, .LETTERBOX)
 
     swapchain->setDevice(device)
     swapchain->setPixelFormat(.BGRA8Unorm_sRGB)
     swapchain->setFramebufferOnly(true)
     swapchain->setFrame(native_window->frame())
+    swapchain->setDrawableSize(NS.Size { NS.Float(f32(w)), NS.Float(f32(h)) } )
 
     native_window->contentView()->setLayer(swapchain)
     native_window->setOpaque(true)
@@ -138,13 +138,13 @@ metal_main :: proc() -> (err: ^NS.Error) {
         delta := time.tick_since(last_frame_time)
 		last_frame_time = time.tick_now()
         w, h: i32
-		SDL3.GetWindowSize(window, &w, &h)
+		SDL3.GetWindowSizeInPixels(window, &w, &h)
 		aspect_ratio := f32(w)/max(f32(h), 1)
 
 
 		for SDL3.PollEvent(&event) {
             // TODO: here send input to engine
-
+            engine.input(&event)
 			#partial switch event.type {
             case .WINDOW_RESIZED:
                 update_window_size()
@@ -208,7 +208,7 @@ metal_main :: proc() -> (err: ^NS.Error) {
         render_encoder->setMeshBuffer(buffer=engine_buffers.camera_buffer,   offset=0, index=0)
 
         // TODO: the thread values are just for the example, use proper ones later!!
-        render_encoder->drawMeshThreadgroups(MTL.Size { 128,1,1 }, MTL.Size { 0,0,0 }, MTL.Size { 1,1,1 })
+        render_encoder->drawMeshThreadgroups(MTL.Size { 2,1,1 }, MTL.Size { 0,0,0 }, MTL.Size { 1,1,1 })
 
         render_encoder->endEncoding()
 
