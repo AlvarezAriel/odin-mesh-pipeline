@@ -1,44 +1,63 @@
 #include <metal_stdlib>
 using namespace metal;
 
+#define AS_GROUP_SIZE 1024
+
 struct Vertex {
     float4 PositionCS [[position]];
-    float4 Color;
+    float Color;
 };
 
 struct Camera_Data {
     float4x4 transform;
 };
 
-using Mesh = metal::mesh<Vertex, void, 8, 12, topology::triangle>;
+struct Payload {
+    uint MeshletIndices[AS_GROUP_SIZE];
+};
 
-void pushCube(Mesh outMesh, float4 pos, Camera_Data camera_data, float w, uint idx) {
+[[object]]
+void objectMain(
+    uint                 gtid       [[thread_position_in_threadgroup]],
+    uint                 dtid       [[thread_position_in_grid]],
+    object_data Payload& outPayload [[payload]],
+    mesh_grid_properties outGrid)
+{
+    outPayload.MeshletIndices[gtid] = dtid;
+    // Assumes all meshlets are visible
+    outGrid.set_threadgroups_per_grid(uint3(AS_GROUP_SIZE, 1, 1));
+}
+
+
+using Voxel = metal::mesh<Vertex, void, 8*2, 12*2, topology::triangle>;
+
+void pushCube(Voxel outMesh, float4 pos, Camera_Data camera_data, float w, uint idx) {
     Vertex vertices[8];
     uint vidx = idx * 8;
 
     vertices[0].PositionCS = camera_data.transform * (pos + float4(-w, w, -w, 1.0));
-    vertices[0].Color = float4(0.2, 0.5, 0.2, 1.0);
+    vertices[0].Color = 0.5;
 
     vertices[1].PositionCS = camera_data.transform * (pos + float4(-w, -w, -w, 1.0));
-    vertices[1].Color = float4(0.6, 0.5, 0.4, 1.0);
+    vertices[1].Color =  0.5;
 
     vertices[2].PositionCS = camera_data.transform * (pos + float4(+w, -w, -w, 1.0));
-    vertices[2].Color = float4(0.0, 0.0, 1.0, 1.0);
+    vertices[2].Color =  0.5;
 
     vertices[3].PositionCS = camera_data.transform * (pos + float4(+w, w, -w, 1.0));
-    vertices[3].Color = float4(1.0, 0.0, 0.1, 1.0);
+    vertices[3].Color =  0.5;
 
     vertices[4].PositionCS = camera_data.transform * (pos + float4(-w, w, w, 1.0));
-    vertices[4].Color = float4(0.6, 0.0, 0.2, 1.0);
+    vertices[4].Color =  0.5;
 
     vertices[5].PositionCS = camera_data.transform * (pos + float4(-w, -w, w, 1.0));
-    vertices[5].Color = float4(0.0, 0.0, 0.4, 1.0);
+    vertices[5].Color =  0.5;
 
     vertices[6].PositionCS = camera_data.transform * (pos + float4(+w, -w, w, 1.0));
-    vertices[6].Color = float4(0.2, 0.0, 0.2, 1.0);
+    vertices[6].Color =  0.5;
 
     vertices[7].PositionCS = camera_data.transform * (pos + float4(+w, w, w, 1.0));
-    vertices[7].Color = float4(0.0, 1.0, 0.0, 1.0);
+    vertices[7].Color =  0.5;
 
     outMesh.set_vertex(vidx + 0, vertices[0]);
     outMesh.set_vertex(vidx + 1, vertices[1]);
@@ -49,79 +68,84 @@ void pushCube(Mesh outMesh, float4 pos, Camera_Data camera_data, float w, uint i
     outMesh.set_vertex(vidx + 6, vertices[6]);
     outMesh.set_vertex(vidx + 7, vertices[7]);
 
+    uint midx = idx * 36;
     // Back
-    outMesh.set_index(0, vidx + 0);
-    outMesh.set_index(1, vidx + 1);
-    outMesh.set_index(2, vidx + 2);
+    outMesh.set_index(midx+0, vidx + 0);
+    outMesh.set_index(midx+1, vidx + 1);
+    outMesh.set_index(midx+2, vidx + 2);
 
-    outMesh.set_index(3, vidx + 0);
-    outMesh.set_index(4, vidx + 2);
-    outMesh.set_index(5, vidx + 3);
+    outMesh.set_index(midx+3, vidx + 0);
+    outMesh.set_index(midx+4, vidx + 2);
+    outMesh.set_index(midx+5, vidx + 3);
 
     // Right
-    outMesh.set_index(6, vidx + 7);
-    outMesh.set_index(7, vidx + 3);
-    outMesh.set_index(8, vidx + 2);
+    outMesh.set_index(midx+6, vidx + 7);
+    outMesh.set_index(midx+7, vidx + 3);
+    outMesh.set_index(midx+8, vidx + 2);
 
-    outMesh.set_index( 9, vidx + 6);
-    outMesh.set_index(10, vidx + 7);
-    outMesh.set_index(11, vidx + 2);
+    outMesh.set_index(midx+ 9, vidx + 6);
+    outMesh.set_index(midx+10, vidx + 7);
+    outMesh.set_index(midx+11, vidx + 2);
 
     // Front
-    outMesh.set_index(12, vidx + 5);
-    outMesh.set_index(13, vidx + 7);
-    outMesh.set_index(14, vidx + 6);
+    outMesh.set_index(midx+12, vidx + 5);
+    outMesh.set_index(midx+13, vidx + 7);
+    outMesh.set_index(midx+14, vidx + 6);
 
-    outMesh.set_index(15, vidx + 5);
-    outMesh.set_index(16, vidx + 4);
-    outMesh.set_index(17, vidx + 7);
+    outMesh.set_index(midx+15, vidx + 5);
+    outMesh.set_index(midx+16, vidx + 4);
+    outMesh.set_index(midx+17, vidx + 7);
 
     // Bottom
-    outMesh.set_index(18, vidx + 5);
-    outMesh.set_index(19, vidx + 6);
-    outMesh.set_index(20, vidx + 2);
+    outMesh.set_index(midx+18, vidx + 5);
+    outMesh.set_index(midx+19, vidx + 6);
+    outMesh.set_index(midx+20, vidx + 2);
 
-    outMesh.set_index(21, vidx + 5);
-    outMesh.set_index(22, vidx + 2);
-    outMesh.set_index(23, vidx + 1);
+    outMesh.set_index(midx+21, vidx + 5);
+    outMesh.set_index(midx+22, vidx + 2);
+    outMesh.set_index(midx+23, vidx + 1);
 
     // Left
-    outMesh.set_index(24, vidx + 0);
-    outMesh.set_index(25, vidx + 4);
-    outMesh.set_index(26, vidx + 1);
+    outMesh.set_index(midx+24, vidx + 0);
+    outMesh.set_index(midx+25, vidx + 4);
+    outMesh.set_index(midx+26, vidx + 1);
 
-    outMesh.set_index(27, vidx + 4);
-    outMesh.set_index(28, vidx + 5);
-    outMesh.set_index(29, vidx + 1);
+    outMesh.set_index(midx+27, vidx + 4);
+    outMesh.set_index(midx+28, vidx + 5);
+    outMesh.set_index(midx+29, vidx + 1);
 
     // Top
-    outMesh.set_index(30, vidx + 7);
-    outMesh.set_index(31, vidx + 0);
-    outMesh.set_index(32, vidx + 3);
+    outMesh.set_index(midx+30, vidx + 7);
+    outMesh.set_index(midx+31, vidx + 0);
+    outMesh.set_index(midx+32, vidx + 3);
 
-    outMesh.set_index(33, vidx + 4);
-    outMesh.set_index(34, vidx + 0);
-    outMesh.set_index(35, vidx + 7);
+    outMesh.set_index(midx+33, vidx + 4);
+    outMesh.set_index(midx+34, vidx + 0);
+    outMesh.set_index(midx+35, vidx + 7);
 }
 
 
 [[mesh]]
 void meshMain(
-    Mesh outMesh,
+    Voxel outMesh,
     device const Camera_Data&   camera_data   [[buffer(0)]],
+    object_data const Payload& payload [[payload]],
     uint tid [[thread_index_in_threadgroup]],
     uint gid [[threadgroup_position_in_grid]]
 ) {
     
-    outMesh.set_primitive_count(12);
+    outMesh.set_primitive_count(12*2);
+    
 
-    float starting = float(gid);
+    float starting = float(payload.MeshletIndices[gid] / AS_GROUP_SIZE);
     float w = 0.5;
 
-    float4 pos = float4(starting, 0.0, 0.0, 0.0);
-
+    float4 pos;
+    pos = float4(starting, 0.0, float(gid), 0.0);
     pushCube(outMesh, pos, camera_data, w, 0);
-    
+
+    pos = float4(starting, 1.0, float(gid), 0.0);
+    pushCube(outMesh, pos, camera_data, w, 1);
 }
 
 
@@ -133,5 +157,5 @@ struct FSInput
 [[fragment]]
 float4 fragmentMain(FSInput input [[stage_in]])
 {
-    return float4(input.vtx.Color.rgb, 1.0);
+    return float4(float3(input.vtx.Color), 1.0);
 }

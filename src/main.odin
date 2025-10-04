@@ -27,14 +27,19 @@ build_shaders :: proc(device: ^MTL.Device) -> (library: ^MTL.Library, pso: ^MTL.
 
     library = device->newLibraryWithSource(shader_src_str, nil) or_return
 
+    object_function   := library->newFunctionWithName(NS.AT("objectMain"))
+    defer object_function->release()
+
     mesh_function   := library->newFunctionWithName(NS.AT("meshMain"))
-    fragment_function := library->newFunctionWithName(NS.AT("fragmentMain"))
     defer mesh_function->release()
+
+    fragment_function := library->newFunctionWithName(NS.AT("fragmentMain"))
     defer fragment_function->release()
 
     desc := MTL.MeshRenderPipelineDescriptor.alloc()->init()
     defer desc->release()
 
+    desc->setObjectFunction(object_function)
     desc->setMeshFunction(mesh_function)
     desc->setFragmentFunction(fragment_function)
     desc->colorAttachments()->object(0)->setPixelFormat(.BGRA8Unorm_sRGB)
@@ -134,10 +139,19 @@ metal_main :: proc() -> (err: ^NS.Error) {
 
     // TODO: migrate next example with camera!!!! https://github.com/chaoticbob/GraphicsExperiments/blob/main/projects/geometry/113_mesh_shader_instancing_metal/113_mesh_shader_instancing_metal.cpp
     // TODO: Lookup anti-aliasing on the MeshShadersMetalCPP example on XCode
+    fps := 0
+    elapsed_time:time.Duration = 0
     for quit := false; !quit;  {
 
         delta := time.tick_since(last_frame_time)
+        elapsed_time += delta
 		last_frame_time = time.tick_now()
+        fps += 1
+        if time.duration_seconds(elapsed_time) > 5 {
+            log.debug("FPS:",fps / 5)
+            elapsed_time = elapsed_time - time.Second * 5
+            fps = 0
+        }
         w, h: i32
 		SDL3.GetWindowSizeInPixels(window, &w, &h)
 		aspect_ratio := f32(w)/max(f32(h), 1)
@@ -213,9 +227,8 @@ metal_main :: proc() -> (err: ^NS.Error) {
         render_encoder->setCullMode(.Back)
 
         render_encoder->setMeshBuffer(buffer=engine_buffers.camera_buffer,   offset=0, index=0)
-
         // TODO: the thread values are just for the example, use proper ones later!!
-        render_encoder->drawMeshThreadgroups(MTL.Size { 3,1,1 }, MTL.Size { 0,0,0 }, MTL.Size { 1,1,1 })
+        render_encoder->drawMeshThreadgroups(MTL.Size { 1024,1,1 }, MTL.Size { 1024,1,1 }, MTL.Size { 128,1,1 })
 
         render_encoder->endEncoding()
 

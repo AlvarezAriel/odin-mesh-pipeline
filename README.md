@@ -15,4 +15,7 @@ As of right now it's mostly empty, so if you came here looking for a nice exampl
     - Idea: Try an Immediate Radiance kind of approach, maybe keep a cache of luminosity on each visible voxel. That could even be done on CPU threads. I don't know.
     - I still need to decide if I'm going with a per voxel light, per face light, or something more detailed.
 
+
+References:
+ - Some Metal examples https://github.com/chaoticbob/GraphicsExperiments/blob/main/projects/geometry/113_mesh_shader_instancing_metal/113_mesh_shader_instancing_metal.cpp
  

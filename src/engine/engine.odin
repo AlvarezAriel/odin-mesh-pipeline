@@ -65,18 +65,19 @@ update :: proc(delta: time.Duration, aspect: f32, buffers: ^EngineBuffers) {
     
     d := f32(time.duration_seconds(delta))
     state.player.speed.x = state.controls.left - state.controls.right
+    voxes_per_second :f32 = d * 100
 
     direction := glm.normalize(state.player.look * { 1, 0, 1, 0})
 
-    state.player.pos = state.player.pos + (direction * (state.controls.forward - state.controls.back) * d)
+    state.player.pos = state.player.pos + (direction * (state.controls.forward - state.controls.back) * voxes_per_second)
 
     side_direction := side_look_dir()
-    state.player.pos = state.player.pos + side_direction * (state.controls.left - state.controls.right) * d
+    state.player.pos = state.player.pos + side_direction * (state.controls.left - state.controls.right) * voxes_per_second
 
-    state.player.pos = state.player.pos + {0, (state.controls.up - state.controls.down), 0, 0 } * d
+    state.player.pos = state.player.pos + {0, (state.controls.up - state.controls.down), 0, 0 } * voxes_per_second
 
     view := glm.mat4LookAt(state.player.pos.xyz, state.player.pos.xyz + state.player.look.xyz, {0, -1, 0})
-    proj := glm.mat4Perspective(43, aspect, 0.05, 100.0)
+    proj := glm.mat4Perspective(43, aspect, 0.05, 5000.0)
 
     state.camera.transform = proj * view
 
