@@ -126,6 +126,7 @@ metal_main :: proc() -> (err: ^NS.Error) {
     event: SDL3.Event
 
 
+    assert(SDL3.SetWindowRelativeMouseMode(window, true))
 
     depth_texture: ^MTL.Texture = nil
 	defer if depth_texture != nil { depth_texture->release() }
@@ -146,6 +147,11 @@ metal_main :: proc() -> (err: ^NS.Error) {
             // TODO: here send input to engine
             engine.input(&event)
 			#partial switch event.type {
+            case .KEY_DOWN:
+                if event.key.key == SDL3.K_ESCAPE {
+                    assert(SDL3.SetWindowRelativeMouseMode(window, false))
+                }
+
             case .WINDOW_RESIZED:
                 update_window_size()
 			case .QUIT:
