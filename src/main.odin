@@ -11,6 +11,7 @@ import "core:log"
 import "core:mem"
 import "core:os"
 import "core:time"
+import "vox"
 
 import glm "core:math/linalg/glsl"
 import "engine"
@@ -44,7 +45,7 @@ build_shaders :: proc(device: ^MTL.Device) -> (library: ^MTL.Library, pso: ^MTL.
     desc->setFragmentFunction(fragment_function)
     desc->colorAttachments()->object(0)->setPixelFormat(.BGRA8Unorm_sRGB)
     desc->setDepthAttachmentPixelFormat(.Depth16Unorm)
-    desc->setRasterSampleCount(4)
+    //desc->setRasterSampleCount(4)
 
     pso = device->newRenderPipelineStateWithMeshDescriptor(desc, nil, nil) or_return
 
@@ -62,6 +63,34 @@ build_depth_stencil :: proc(device: ^MTL.Device) -> (dso: ^MTL.DepthStencilState
 
     return
 }
+
+SparseVoxelContainer :: struct #align(16) {
+    cells:[128][128][64]f32
+}
+
+vox_container: ^SparseVoxelContainer
+vox_buffer: ^MTL.Buffer
+
+build_voxel_buffer :: proc(device: ^MTL.Device) {
+    vox_buffer = device->newBuffer(size_of(SparseVoxelContainer), {.StorageModeManaged})
+    vox_container = vox_buffer->contentsAsType(SparseVoxelContainer)
+
+    if v, ok := vox.load_from_file("./assets/room.vox", context.temp_allocator); ok {
+        scene := v.models[0]
+        log.debug("loading models", len(scene.voxels))
+        for cube in scene.voxels {
+            color := v.palette[cube.color_index]
+            vox_container.cells[cube.pos.x][cube.pos.y][cube.pos.z] = 1
+            log.debug("voxel", cube.pos, color)
+        }
+    }
+
+    vox_buffer->didModifyRange(NS.Range_Make(0, size_of(SparseVoxelContainer)))
+        
+	return
+}
+
+
 
 metal_main :: proc() -> (err: ^NS.Error) {
     cl := log.create_console_logger()
@@ -122,6 +151,9 @@ metal_main :: proc() -> (err: ^NS.Error) {
 
     engine.init(device, &engine_buffers)
     defer engine.release(&engine_buffers)
+
+    build_voxel_buffer(device)
+    defer vox_buffer->release()
 
     command_queue := device->newCommandQueue()
     defer command_queue->release()
@@ -227,8 +259,9 @@ metal_main :: proc() -> (err: ^NS.Error) {
         render_encoder->setCullMode(.Back)
 
         render_encoder->setMeshBuffer(buffer=engine_buffers.camera_buffer,   offset=0, index=0)
+        render_encoder->setMeshBuffer(buffer=vox_buffer,                     offset=0, index=1)
         // TODO: the thread values are just for the example, use proper ones later!!
-        render_encoder->drawMeshThreadgroups(MTL.Size { 1024,1,1 }, MTL.Size { 1024,1,1 }, MTL.Size { 128,1,1 })
+        render_encoder->drawMeshThreadgroups(MTL.Size { 128,1,1 }, MTL.Size { 128,1,1 }, MTL.Size { 1,1,1 })
 
         render_encoder->endEncoding()
 

@@ -131,7 +131,6 @@ calcCameraYaw :: proc(event: ^SDL.Event) {
         xrotation := glm.mat4Rotate(side_look_dir().xyz, event.motion.yrel * sensitivity)
         state.player.look = glm.normalize(yrotation * state.player.look)
         state.player.look = glm.normalize(xrotation * state.player.look)
-        log.debug(state.player.look, "  ", event.motion.xrel)
     }
 }
 
