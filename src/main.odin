@@ -132,6 +132,7 @@ metal_main :: proc() -> (err: ^NS.Error) {
     renderer := SDL3.GetRenderer(window)
     SDL3.SetRenderLogicalPresentation(renderer, w, h, .LETTERBOX)
 
+    log.debug("Preparing swapchain")
     swapchain->setDevice(device)
     swapchain->setPixelFormat(.BGRA8Unorm_sRGB)
     swapchain->setFramebufferOnly(true)
@@ -142,6 +143,7 @@ metal_main :: proc() -> (err: ^NS.Error) {
     native_window->setOpaque(true)
     native_window->setBackgroundColor(nil)
 
+    log.debug("Building shaders")
     library, pso := build_shaders(device) or_return
     defer library->release()
     defer pso->release()
@@ -149,9 +151,11 @@ metal_main :: proc() -> (err: ^NS.Error) {
     dso := build_depth_stencil(device) or_return
     defer dso->release()
 
+    log.debug("Initializing engine")
     engine.init(device, &engine_buffers)
     defer engine.release(&engine_buffers)
 
+    log.debug("Initializing world")
     build_voxel_buffer(device)
     defer vox_buffer->release()
 

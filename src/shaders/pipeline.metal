@@ -6,7 +6,7 @@ using namespace metal;
 
 struct Vertex {
     float4 PositionCS [[position]];
-    float Color;
+    float4 Color;
 };
 
 struct Camera_Data {
@@ -38,9 +38,20 @@ void objectMain(
 
 using Voxel = metal::mesh<Vertex, void, 8*STACK_SIZE, 12*STACK_SIZE, topology::triangle>;
 
-void pushCube(Voxel outMesh, float4 pos, Camera_Data camera_data, float w, uint idx, float tone) {
+uint pushCube(
+    Voxel outMesh, 
+    uint3 upos, 
+    Camera_Data camera_data, 
+    float w, uint idx, 
+    float4 tone,
+    constant Voxels_Data* voxels_data
+) {
+    uint triangle_count = 0;
+
     Vertex vertices[8];
     uint vidx = idx * 8;
+
+    float4 pos = float4(float(upos.x), float(upos.y), float(upos.z), 0.0);
 
     vertices[0].PositionCS = camera_data.transform * (pos + float4(-w, w, -w, 1.0));
     vertices[0].Color = tone;
@@ -76,67 +87,100 @@ void pushCube(Voxel outMesh, float4 pos, Camera_Data camera_data, float w, uint 
     outMesh.set_vertex(vidx + 7, vertices[7]);
 
     uint midx = idx * 36;
-    // Back
-    outMesh.set_index(midx++, vidx + 0);
-    outMesh.set_index(midx++, vidx + 1);
-    outMesh.set_index(midx++, vidx + 2);
 
-    outMesh.set_index(midx++, vidx + 0);
-    outMesh.set_index(midx++, vidx + 2);
-    outMesh.set_index(midx++, vidx + 3);
+    bool has_back_neightbour = voxels_data->cell[upos.x][upos.z-1][upos.y] > 0.0;
+    if(!has_back_neightbour) {
+        // Back
+        outMesh.set_index(midx++, vidx + 0);
+        outMesh.set_index(midx++, vidx + 1);
+        outMesh.set_index(midx++, vidx + 2);
 
-    // Right
-    outMesh.set_index(midx++, vidx + 7);
-    outMesh.set_index(midx++, vidx + 3);
-    outMesh.set_index(midx++, vidx + 2);
+        outMesh.set_index(midx++, vidx + 0);
+        outMesh.set_index(midx++, vidx + 2);
+        outMesh.set_index(midx++, vidx + 3);
 
-    outMesh.set_index(midx++, vidx + 6);
-    outMesh.set_index(midx++, vidx + 7);
-    outMesh.set_index(midx++, vidx + 2);
+        triangle_count += 2;
+    }
+    
+    bool has_right_neightbour = voxels_data->cell[upos.x+1][upos.z][upos.y] > 0.0;
+    if(!has_right_neightbour) {
+        // Right
+        outMesh.set_index(midx++, vidx + 7);
+        outMesh.set_index(midx++, vidx + 3);
+        outMesh.set_index(midx++, vidx + 2);
 
-    // Front
-    outMesh.set_index(midx++, vidx + 5);
-    outMesh.set_index(midx++, vidx + 7);
-    outMesh.set_index(midx++, vidx + 6);
+        outMesh.set_index(midx++, vidx + 6);
+        outMesh.set_index(midx++, vidx + 7);
+        outMesh.set_index(midx++, vidx + 2);
 
-    outMesh.set_index(midx++, vidx + 5);
-    outMesh.set_index(midx++, vidx + 4);
-    outMesh.set_index(midx++, vidx + 7);
+        triangle_count += 2;
+    }
 
-    // Bottom
-    outMesh.set_index(midx++, vidx + 5);
-    outMesh.set_index(midx++, vidx + 6);
-    outMesh.set_index(midx++, vidx + 2);
+    bool has_front_neightbour = voxels_data->cell[upos.x][upos.z+1][upos.y] > 0.0;
+    if(!has_front_neightbour) {
+        // Front
+        outMesh.set_index(midx++, vidx + 5);
+        outMesh.set_index(midx++, vidx + 7);
+        outMesh.set_index(midx++, vidx + 6);
 
-    outMesh.set_index(midx++, vidx + 5);
-    outMesh.set_index(midx++, vidx + 2);
-    outMesh.set_index(midx++, vidx + 1);
+        outMesh.set_index(midx++, vidx + 5);
+        outMesh.set_index(midx++, vidx + 4);
+        outMesh.set_index(midx++, vidx + 7);
 
-    // Left
-    outMesh.set_index(midx++, vidx + 0);
-    outMesh.set_index(midx++, vidx + 4);
-    outMesh.set_index(midx++, vidx + 1);
+        triangle_count += 2;
+    }
 
-    outMesh.set_index(midx++, vidx + 4);
-    outMesh.set_index(midx++, vidx + 5);
-    outMesh.set_index(midx++, vidx + 1);
+    bool has_bottom_neightbour = voxels_data->cell[upos.x][upos.z][upos.y-1] > 0.0;
+    if(!has_bottom_neightbour) {
+        // Bottom
+        outMesh.set_index(midx++, vidx + 5);
+        outMesh.set_index(midx++, vidx + 6);
+        outMesh.set_index(midx++, vidx + 2);
 
-    // Top
-    outMesh.set_index(midx++, vidx + 7);
-    outMesh.set_index(midx++, vidx + 0);
-    outMesh.set_index(midx++, vidx + 3);
+        outMesh.set_index(midx++, vidx + 5);
+        outMesh.set_index(midx++, vidx + 2);
+        outMesh.set_index(midx++, vidx + 1);
 
-    outMesh.set_index(midx++, vidx + 4);
-    outMesh.set_index(midx++, vidx + 0);
-    outMesh.set_index(midx++, vidx + 7);
+        triangle_count += 2;
+    }
+
+    bool has_left_neightbour = voxels_data->cell[upos.x-1][upos.z][upos.y] > 0.0;
+    if(!has_left_neightbour) {
+        // Left
+        outMesh.set_index(midx++, vidx + 0);
+        outMesh.set_index(midx++, vidx + 4);
+        outMesh.set_index(midx++, vidx + 1);
+
+        outMesh.set_index(midx++, vidx + 4);
+        outMesh.set_index(midx++, vidx + 5);
+        outMesh.set_index(midx++, vidx + 1);
+
+        triangle_count += 2;
+    }
+
+    bool has_top_neightbour = voxels_data->cell[upos.x][upos.z][upos.y+1] > 0.0;
+    if(!has_top_neightbour) {
+        // Top
+        outMesh.set_index(midx++, vidx + 7);
+        outMesh.set_index(midx++, vidx + 0);
+        outMesh.set_index(midx++, vidx + 3);
+
+        outMesh.set_index(midx++, vidx + 4);
+        outMesh.set_index(midx++, vidx + 0);
+        outMesh.set_index(midx++, vidx + 7);
+
+        triangle_count += 2;
+    }
+
+    return triangle_count;
 }
 
 
 [[mesh]]
 void meshMain(
     Voxel outMesh,
-    device const Camera_Data&   camera_data   [[buffer(0)]],
-    const device Voxels_Data&   voxels_data   [[buffer(1)]],
+    constant Camera_Data&   camera_data   [[buffer(0)]],
+    constant Voxels_Data*   voxels_data   [[buffer(1)]],
     object_data const Payload& payload [[payload]],
     uint tid [[thread_index_in_threadgroup]],
     uint gid [[threadgroup_position_in_grid]]
@@ -148,13 +192,16 @@ void meshMain(
     uint z = gid;
     float w = 0.5;
 
-    float4 pos;
+    uint3 pos;
+    uint triangle_count = 0;
     for(uint i = 0 ; i < STACK_SIZE; i++) {
         uint y = i;
-        float color = voxels_data.cell[x][z][y];
+        float color = voxels_data->cell[x][z][y];
+
         if(color > 0.0) {
-            pos = float4(float(x), float(y), float(z), 0.0);
-            pushCube(outMesh, pos, camera_data, w, i, color);
+            float4 c = float4(float3(0.2), 0.0);
+            pos = uint3(x,y,z);
+            triangle_count += pushCube(outMesh, pos, camera_data, w, i, c, voxels_data);
         }
     }
 }
@@ -168,5 +215,5 @@ struct FSInput
 [[fragment]]
 float4 fragmentMain(FSInput input [[stage_in]])
 {
-    return float4(input.vtx.PositionCS.xyz, 1.0);
+    return float4(input.vtx.Color.rgb, 1.0);
 }
