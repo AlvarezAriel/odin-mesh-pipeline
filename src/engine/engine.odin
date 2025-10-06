@@ -29,6 +29,7 @@ Controls :: struct {
 
 Camera :: struct #align(16) {
 	transform:  glm.mat4,
+    pos: glm.vec4,
 }
 
 SparseVoxels :: struct #align(16) {
@@ -80,6 +81,7 @@ update :: proc(delta: time.Duration, aspect: f32, buffers: ^EngineBuffers) {
     proj := glm.mat4Perspective(43, aspect, 0.05, 5000.0)
 
     state.camera.transform = proj * view
+    state.camera.pos = state.player.pos
 
     buffers.camera_buffer->didModifyRange(NS.Range_Make(0, size_of(Camera)))
 
@@ -136,4 +138,5 @@ calcCameraYaw :: proc(event: ^SDL.Event) {
 
 release :: proc(buffers: ^EngineBuffers) {
     buffers.camera_buffer->release()
+    buffers.sparse_voxels_buffer->release()
 }

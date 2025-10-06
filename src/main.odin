@@ -45,8 +45,8 @@ build_shaders :: proc(device: ^MTL.Device) -> (library: ^MTL.Library, pso: ^MTL.
     desc->setMeshFunction(mesh_function)
     desc->setFragmentFunction(fragment_function)
     desc->colorAttachments()->object(0)->setPixelFormat(.BGRA8Unorm_sRGB)
-    desc->setDepthAttachmentPixelFormat(.Depth16Unorm)
-    //desc->setRasterSampleCount(4)
+    desc->setDepthAttachmentPixelFormat(.Depth32Float)
+    desc->setRasterSampleCount(4)
 
     pso = device->newRenderPipelineStateWithMeshDescriptor(desc, nil, nil) or_return
 
@@ -66,7 +66,7 @@ build_depth_stencil :: proc(device: ^MTL.Device) -> (dso: ^MTL.DepthStencilState
 }
 
 SparseVoxelContainer :: struct #align(16) {
-    cells:[GROUP_SIZE][GROUP_SIZE][64]f32
+    cells:[GROUP_SIZE][GROUP_SIZE][GROUP_SIZE]u8
 }
 
 vox_container: ^SparseVoxelContainer
@@ -82,7 +82,7 @@ build_voxel_buffer :: proc(device: ^MTL.Device) {
         for cube in scene.voxels {
             color := v.palette[cube.color_index]
             vox_container.cells[cube.pos.x][cube.pos.y][cube.pos.z] = 1
-            log.debug("voxel", cube.pos, color)
+            
         }
     }
 
@@ -132,6 +132,7 @@ metal_main :: proc() -> (err: ^NS.Error) {
     log.debug("window size in pixels", w, h, " display mode:",     SDL3.GetDisplayForWindow(window))
     renderer := SDL3.GetRenderer(window)
     SDL3.SetRenderLogicalPresentation(renderer, w, h, .LETTERBOX)
+    SDL3.SetRenderVSync(renderer, 1)
 
     log.debug("Preparing swapchain")
     swapchain->setDevice(device)
@@ -263,7 +264,7 @@ metal_main :: proc() -> (err: ^NS.Error) {
         render_encoder->setMeshBuffer(buffer=engine_buffers.camera_buffer,   offset=0, index=0)
         render_encoder->setMeshBuffer(buffer=vox_buffer,                     offset=0, index=1)
 
-        render_encoder->drawMeshThreadgroups(MTL.Size { GROUP_SIZE,1,1 }, MTL.Size { 1,1,1 }, MTL.Size { 32,1,1 })
+        render_encoder->drawMeshThreadgroups(MTL.Size { GROUP_SIZE,GROUP_SIZE,1 }, MTL.Size { 1,1,1 }, MTL.Size { 1,1,1 })
 
         render_encoder->endEncoding()
 
