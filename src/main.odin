@@ -17,6 +17,7 @@ import glm "core:math/linalg/glsl"
 import "engine"
 
 SHADER_SOURCE :: #load("./shaders/pipeline.metal", string)
+GROUP_SIZE :: 128
 
 engine_buffers: engine.EngineBuffers
 pixel_density: f32
@@ -65,7 +66,7 @@ build_depth_stencil :: proc(device: ^MTL.Device) -> (dso: ^MTL.DepthStencilState
 }
 
 SparseVoxelContainer :: struct #align(16) {
-    cells:[128][128][64]f32
+    cells:[GROUP_SIZE][GROUP_SIZE][64]f32
 }
 
 vox_container: ^SparseVoxelContainer
@@ -265,7 +266,7 @@ metal_main :: proc() -> (err: ^NS.Error) {
         render_encoder->setMeshBuffer(buffer=engine_buffers.camera_buffer,   offset=0, index=0)
         render_encoder->setMeshBuffer(buffer=vox_buffer,                     offset=0, index=1)
         // TODO: the thread values are just for the example, use proper ones later!!
-        render_encoder->drawMeshThreadgroups(MTL.Size { 128,1,1 }, MTL.Size { 128,1,1 }, MTL.Size { 1,1,1 })
+        render_encoder->drawMeshThreadgroups(MTL.Size { GROUP_SIZE,1,1 }, MTL.Size { 1,1,1 }, MTL.Size { 32,1,1 })
 
         render_encoder->endEncoding()
 

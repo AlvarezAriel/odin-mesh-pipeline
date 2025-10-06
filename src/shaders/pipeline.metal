@@ -14,27 +14,14 @@ struct Camera_Data {
 };
 
 struct Voxels_Data {
-    float cell[128][128][64];
+    float cell[AS_GROUP_SIZE][AS_GROUP_SIZE][64];
 };
 
 
 struct Payload {
     uint MeshletIndices[AS_GROUP_SIZE];
+    uint objectIndex;
 };
-
-[[object]]
-void objectMain(
-    uint                 gtid       [[thread_position_in_threadgroup]],
-    uint                 dtid       [[thread_position_in_grid]],
-    object_data Payload& outPayload [[payload]],
-    mesh_grid_properties outGrid)
-{
-    outPayload.MeshletIndices[gtid] = dtid;
-    // Assumes all meshlets are visible
-    // TODO: culling
-    outGrid.set_threadgroups_per_grid(uint3(AS_GROUP_SIZE, 1, 1));
-}
-
 
 using Voxel = metal::mesh<Vertex, void, 8*STACK_SIZE, 12*STACK_SIZE, topology::triangle>;
 
@@ -175,6 +162,26 @@ uint pushCube(
     return triangle_count;
 }
 
+[[object]]
+void objectMain(
+    uint objectIndex                [[threadgroup_position_in_grid]],
+    uint meshletIndex               [[thread_position_in_grid]],
+    uint threadIndex                [[thread_position_in_threadgroup]],
+    object_data Payload& outPayload [[payload]],
+    mesh_grid_properties outGrid)
+{
+    outPayload.objectIndex = objectIndex;
+    outPayload.MeshletIndices[threadIndex] = meshletIndex;
+    // Assumes all meshlets are visible
+    
+    uint passed = AS_GROUP_SIZE; // TODO: culling
+    uint visibleMeshletCount = simd_sum(passed);
+
+    if (threadIndex == 0) {
+        outGrid.set_threadgroups_per_grid(uint3(AS_GROUP_SIZE, 1, 1));
+    }
+}
+
 
 [[mesh]]
 void meshMain(
@@ -182,27 +189,32 @@ void meshMain(
     constant Camera_Data&   camera_data   [[buffer(0)]],
     constant Voxels_Data*   voxels_data   [[buffer(1)]],
     object_data const Payload& payload [[payload]],
-    uint tid [[thread_index_in_threadgroup]],
-    uint gid [[threadgroup_position_in_grid]]
+    uint payloadIndex                       [[threadgroup_position_in_grid]],
+    uint threadIndex                        [[thread_position_in_threadgroup]]
 ) {
     
-    outMesh.set_primitive_count(12*STACK_SIZE);
-
-    uint x = payload.MeshletIndices[gid] / AS_GROUP_SIZE;
-    uint z = gid;
+    if (threadIndex == 0) {
+        outMesh.set_primitive_count(12*32);
+    }
+    
+    uint x = payload.objectIndex;
+    uint z = payloadIndex;
     float w = 0.5;
 
     uint3 pos;
     uint triangle_count = 0;
-    for(uint i = 0 ; i < STACK_SIZE; i++) {
-        uint y = i;
-        float color = voxels_data->cell[x][z][y];
+    
+    uint y = threadIndex;
+    float color = voxels_data->cell[x][z][y];
 
-        if(color > 0.0) {
-            float4 c = float4(float3(0.2), 0.0);
-            pos = uint3(x,y,z);
-            triangle_count += pushCube(outMesh, pos, camera_data, w, i, c, voxels_data);
+    if(color > 0.0) {
+        float4 c = float4(float3(0.2), 0.0);
+
+        if(y == 0) {
+            c.r = 1.0;
         }
+        pos = uint3(x,y,z);
+        triangle_count += pushCube(outMesh, pos, camera_data, w, y, c, voxels_data);
     }
 }
 
