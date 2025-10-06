@@ -173,9 +173,6 @@ metal_main :: proc() -> (err: ^NS.Error) {
     depth_texture: ^MTL.Texture = nil
 	defer if depth_texture != nil { depth_texture->release() }
 
-
-    // TODO: migrate next example with camera!!!! https://github.com/chaoticbob/GraphicsExperiments/blob/main/projects/geometry/113_mesh_shader_instancing_metal/113_mesh_shader_instancing_metal.cpp
-    // TODO: Lookup anti-aliasing on the MeshShadersMetalCPP example on XCode
     fps := 0
     elapsed_time:time.Duration = 0
     for quit := false; !quit;  {
@@ -216,7 +213,7 @@ metal_main :: proc() -> (err: ^NS.Error) {
 		   depth_texture->width() != NS.UInteger(w) ||
 		   depth_texture->height() != NS.UInteger(h) {
 			desc := MTL.TextureDescriptor.texture2DDescriptorWithPixelFormat(
-				pixelFormat = .Depth16Unorm,
+				pixelFormat = .Depth32Float,
 				width = NS.UInteger(w),
 				height = NS.UInteger(h),
 				mipmapped = false,
@@ -265,7 +262,7 @@ metal_main :: proc() -> (err: ^NS.Error) {
 
         render_encoder->setMeshBuffer(buffer=engine_buffers.camera_buffer,   offset=0, index=0)
         render_encoder->setMeshBuffer(buffer=vox_buffer,                     offset=0, index=1)
-        // TODO: the thread values are just for the example, use proper ones later!!
+
         render_encoder->drawMeshThreadgroups(MTL.Size { GROUP_SIZE,1,1 }, MTL.Size { 1,1,1 }, MTL.Size { 32,1,1 })
 
         render_encoder->endEncoding()
