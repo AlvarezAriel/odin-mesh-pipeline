@@ -65,7 +65,7 @@ update :: proc(delta: time.Duration, aspect: f32, buffers: ^EngineBuffers) {
     
     d := f32(time.duration_seconds(delta))
     state.player.speed.x = state.controls.left - state.controls.right
-    voxes_per_second :f32 = d * 100
+    voxes_per_second :f32 = d * 10
 
     direction := glm.normalize(state.player.look * { 1, 0, 1, 0})
 

@@ -9,6 +9,10 @@ struct Vertex {
     float4 Color;
 };
 
+struct TriangleOut {
+    float3 Normal [[flat]];
+};
+
 struct Camera_Data {
     float4x4 transform;
 };
@@ -23,7 +27,7 @@ struct Payload {
     uint objectIndex;
 };
 
-using Voxel = metal::mesh<Vertex, void, 8*STACK_SIZE, 12*STACK_SIZE, topology::triangle>;
+using Voxel = metal::mesh<Vertex, TriangleOut, 8*STACK_SIZE, 12*STACK_SIZE, topology::triangle>;
 
 uint pushCube(
     Voxel outMesh, 
@@ -36,12 +40,23 @@ uint pushCube(
     uint triangle_count = 0;
 
     Vertex vertices[8];
+    TriangleOut quads[6];
     uint vidx = idx * 8;
 
     float4 pos = float4(float(upos.x), float(upos.y), float(upos.z), 0.0);
 
+    bool has_left_neightbour = voxels_data->cell[upos.x-1][upos.z][upos.y] > 0.0;
+    bool has_right_neightbour = voxels_data->cell[upos.x+1][upos.z][upos.y] > 0.0;
+    bool has_top_neightbour = voxels_data->cell[upos.x][upos.z][upos.y+1] > 0.0;
+
+    bool has_back_top_neightbour = voxels_data->cell[upos.x][upos.z-1][upos.y+1] > 0.0;
+    bool has_front_top_neightbour = voxels_data->cell[upos.x][upos.z+1][upos.y+1] > 0.0;
+
     vertices[0].PositionCS = camera_data.transform * (pos + float4(-w, w, -w, 1.0));
     vertices[0].Color = tone;
+    if(has_back_top_neightbour && !has_top_neightbour) {
+        vertices[0].Color = tone / 2.0;
+    }
 
     vertices[1].PositionCS = camera_data.transform * (pos + float4(-w, -w, -w, 1.0));
     vertices[1].Color =  tone;
@@ -51,6 +66,10 @@ uint pushCube(
 
     vertices[3].PositionCS = camera_data.transform * (pos + float4(+w, w, -w, 1.0));
     vertices[3].Color =  tone;
+    if(has_back_top_neightbour && !has_top_neightbour) {
+        vertices[3].Color = tone / 2.0;
+    }
+
 
     vertices[4].PositionCS = camera_data.transform * (pos + float4(-w, w, w, 1.0));
     vertices[4].Color =  tone;
@@ -74,89 +93,122 @@ uint pushCube(
     outMesh.set_vertex(vidx + 7, vertices[7]);
 
     uint midx = idx * 36;
+    uint pidx = idx * 12;
 
     bool has_back_neightbour = voxels_data->cell[upos.x][upos.z-1][upos.y] > 0.0;
     if(!has_back_neightbour) {
         // Back
+        float4 normal = float4(0.0, 0.0, -1.0, 0.0);
+
         outMesh.set_index(midx++, vidx + 0);
         outMesh.set_index(midx++, vidx + 1);
         outMesh.set_index(midx++, vidx + 2);
+        quads[pidx].Normal = normal.rgb;
+        outMesh.set_primitive(pidx, quads[pidx]);
+        pidx++;
 
         outMesh.set_index(midx++, vidx + 0);
         outMesh.set_index(midx++, vidx + 2);
         outMesh.set_index(midx++, vidx + 3);
-
-        triangle_count += 2;
+        quads[pidx].Normal = normal.rgb;
+        outMesh.set_primitive(pidx, quads[pidx]);
+        pidx++;
     }
     
-    bool has_right_neightbour = voxels_data->cell[upos.x+1][upos.z][upos.y] > 0.0;
     if(!has_right_neightbour) {
         // Right
+        float4 normal = float4(1.0, 0.0, 0.0, 0.0);
+
         outMesh.set_index(midx++, vidx + 7);
         outMesh.set_index(midx++, vidx + 3);
         outMesh.set_index(midx++, vidx + 2);
+        quads[pidx].Normal = normal.rgb;
+        outMesh.set_primitive(pidx, quads[pidx]);
+        pidx++;
 
         outMesh.set_index(midx++, vidx + 6);
         outMesh.set_index(midx++, vidx + 7);
         outMesh.set_index(midx++, vidx + 2);
-
-        triangle_count += 2;
+        quads[pidx].Normal = normal.rgb;
+        outMesh.set_primitive(pidx, quads[pidx]);
+        pidx++;
     }
 
     bool has_front_neightbour = voxels_data->cell[upos.x][upos.z+1][upos.y] > 0.0;
     if(!has_front_neightbour) {
         // Front
+        float4 normal = float4(0.0, 0.0, 1.0, 0.0);
+
         outMesh.set_index(midx++, vidx + 5);
         outMesh.set_index(midx++, vidx + 7);
         outMesh.set_index(midx++, vidx + 6);
+        quads[pidx].Normal = normal.rgb;
+        outMesh.set_primitive(pidx, quads[pidx]);
+        pidx++;
 
         outMesh.set_index(midx++, vidx + 5);
         outMesh.set_index(midx++, vidx + 4);
         outMesh.set_index(midx++, vidx + 7);
-
-        triangle_count += 2;
+        quads[pidx].Normal = normal.rgb;
+        outMesh.set_primitive(pidx, quads[pidx]);
+        pidx++;
     }
 
     bool has_bottom_neightbour = voxels_data->cell[upos.x][upos.z][upos.y-1] > 0.0;
     if(!has_bottom_neightbour) {
         // Bottom
+        float4 normal = float4(0.0, -1.0, 0.0, 0.0);
+
         outMesh.set_index(midx++, vidx + 5);
         outMesh.set_index(midx++, vidx + 6);
         outMesh.set_index(midx++, vidx + 2);
+        quads[pidx].Normal = normal.rgb;
+        outMesh.set_primitive(pidx, quads[pidx]);
+        pidx++;
 
         outMesh.set_index(midx++, vidx + 5);
         outMesh.set_index(midx++, vidx + 2);
         outMesh.set_index(midx++, vidx + 1);
-
-        triangle_count += 2;
+        quads[pidx].Normal = normal.rgb;
+        outMesh.set_primitive(pidx, quads[pidx]);
+        pidx++;
     }
 
-    bool has_left_neightbour = voxels_data->cell[upos.x-1][upos.z][upos.y] > 0.0;
     if(!has_left_neightbour) {
         // Left
+        float4 normal = float4(-1.0, 0.0, 0.0, 0.0);
+
         outMesh.set_index(midx++, vidx + 0);
         outMesh.set_index(midx++, vidx + 4);
         outMesh.set_index(midx++, vidx + 1);
+        quads[pidx].Normal = normal.rgb;
+        outMesh.set_primitive(pidx, quads[pidx]);
+        pidx++;
 
         outMesh.set_index(midx++, vidx + 4);
         outMesh.set_index(midx++, vidx + 5);
         outMesh.set_index(midx++, vidx + 1);
-
-        triangle_count += 2;
+        quads[pidx].Normal = normal.rgb;
+        outMesh.set_primitive(pidx, quads[pidx]);
+        pidx++;
     }
 
-    bool has_top_neightbour = voxels_data->cell[upos.x][upos.z][upos.y+1] > 0.0;
     if(!has_top_neightbour) {
         // Top
+        float4 normal = float4(1.0, 0.0, 0.0, 0.0);
+
         outMesh.set_index(midx++, vidx + 7);
         outMesh.set_index(midx++, vidx + 0);
         outMesh.set_index(midx++, vidx + 3);
+        quads[pidx].Normal = normal.rgb;
+        outMesh.set_primitive(pidx, quads[pidx]);
+        pidx++;
 
         outMesh.set_index(midx++, vidx + 4);
         outMesh.set_index(midx++, vidx + 0);
         outMesh.set_index(midx++, vidx + 7);
-
-        triangle_count += 2;
+        quads[pidx].Normal = normal.rgb;
+        outMesh.set_primitive(pidx, quads[pidx]);
     }
 
     return triangle_count;
@@ -222,10 +274,12 @@ void meshMain(
 struct FSInput
 {
     Vertex vtx;
+    TriangleOut tri;
 };
 
 [[fragment]]
 float4 fragmentMain(FSInput input [[stage_in]])
 {
-    return float4(input.vtx.Color.rgb, 1.0);
+    float3 normalColor = float3(0.5) + input.tri.Normal / 2.0;
+    return float4(normalColor, 1.0);
 }
