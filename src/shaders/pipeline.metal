@@ -18,7 +18,7 @@ struct Camera_Data {
 };
 
 struct Voxels_Data {
-    uchar cell[128][128][128];
+    uchar cell[AS_GROUP_SIZE][AS_GROUP_SIZE][AS_GROUP_SIZE];
 };
 
 struct Payload {
@@ -214,6 +214,7 @@ void objectMain(
     //uint passed = AS_GROUP_SIZE; // TODO: culling
     //uint visibleMeshletCount = simd_sum(passed);
 
+    // TODO: use a better structure and don't spawn mesh shaders for empty space
     if (threadIndex == 0) {
         outGrid.set_threadgroups_per_grid(uint3(AS_GROUP_SIZE, 1, 1));
     }

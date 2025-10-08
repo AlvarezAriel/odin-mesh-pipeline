@@ -91,7 +91,7 @@ load_from_data :: proc(data: []u8, allocator := context.allocator) -> (result: V
 
     result.palette = transmute(Palette)DEFAULT_PALETTE
 
-    num_models := 1
+    num_models := 1000
     {
         next_id := peek_data(&data, [4]u8) or_return
         if next_id == {'P', 'A', 'C', 'K'} {

@@ -45,8 +45,8 @@ build_shaders :: proc(device: ^MTL.Device) -> (library: ^MTL.Library, pso: ^MTL.
     desc->setMeshFunction(mesh_function)
     desc->setFragmentFunction(fragment_function)
     desc->colorAttachments()->object(0)->setPixelFormat(.BGRA8Unorm_sRGB)
-    desc->setDepthAttachmentPixelFormat(.Depth32Float)
-    desc->setRasterSampleCount(4)
+    desc->setDepthAttachmentPixelFormat(global_config.depth_format)
+    desc->setRasterSampleCount(NS.UInteger(global_config.raster_sample_count))
 
     pso = device->newRenderPipelineStateWithMeshDescriptor(desc, nil, nil) or_return
 
@@ -73,7 +73,7 @@ vox_container: ^SparseVoxelContainer
 vox_buffer: ^MTL.Buffer
 
 build_voxel_buffer :: proc(device: ^MTL.Device) {
-    vox_buffer = device->newBuffer(size_of(SparseVoxelContainer), {.StorageModeManaged})
+    vox_buffer = device->newBuffer(size_of(SparseVoxelContainer), MTL.ResourceStorageModeShared)
     vox_container = vox_buffer->contentsAsType(SparseVoxelContainer)
 
     if v, ok := vox.load_from_file("./assets/room.vox", context.temp_allocator); ok {
@@ -81,8 +81,10 @@ build_voxel_buffer :: proc(device: ^MTL.Device) {
         log.debug("loading models", len(scene.voxels))
         for cube in scene.voxels {
             color := v.palette[cube.color_index]
-            vox_container.cells[cube.pos.x][cube.pos.y][cube.pos.z] = 1
-            
+             
+            if(cube.pos.x < GROUP_SIZE && cube.pos.y < GROUP_SIZE && cube.pos.z < GROUP_SIZE) {
+                vox_container.cells[cube.pos.x][cube.pos.y][cube.pos.z] = 1
+            }
         }
     }
 
@@ -111,7 +113,7 @@ metal_main :: proc() -> (err: ^NS.Error) {
 		log.fatal("unable to initialize gpu METAL device")
 	}
 
-    window := SDL3.CreateWindow("sdl demo", 1000, 1000, {.HIGH_PIXEL_DENSITY, .RESIZABLE, .METAL})
+    window := SDL3.CreateWindow("sdl demo", global_config.window_size.x, global_config.window_size.y, {.HIGH_PIXEL_DENSITY, .RESIZABLE, .METAL})
 	if window == nil {
 		log.fatalf("unable to initialize window, error: %s", SDL3.GetError())
 	}
@@ -132,7 +134,7 @@ metal_main :: proc() -> (err: ^NS.Error) {
     log.debug("window size in pixels", w, h, " display mode:",     SDL3.GetDisplayForWindow(window))
     renderer := SDL3.GetRenderer(window)
     SDL3.SetRenderLogicalPresentation(renderer, w, h, .LETTERBOX)
-    SDL3.SetRenderVSync(renderer, 1)
+    SDL3.SetRenderVSync(renderer, global_config.vsync)
 
     log.debug("Preparing swapchain")
     swapchain->setDevice(device)
@@ -214,7 +216,7 @@ metal_main :: proc() -> (err: ^NS.Error) {
 		   depth_texture->width() != NS.UInteger(w) ||
 		   depth_texture->height() != NS.UInteger(h) {
 			desc := MTL.TextureDescriptor.texture2DDescriptorWithPixelFormat(
-				pixelFormat = .Depth32Float,
+				pixelFormat = global_config.depth_format,
 				width = NS.UInteger(w),
 				height = NS.UInteger(h),
 				mipmapped = false,
