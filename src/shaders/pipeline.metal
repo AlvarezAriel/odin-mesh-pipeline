@@ -1,7 +1,7 @@
 #include <metal_stdlib>
 using namespace metal;
 
-#define AS_GROUP_SIZE 128
+#define AS_GROUP_SIZE 32
 #define STACK_SIZE 1
 
 struct Vertex {
@@ -24,14 +24,21 @@ struct Voxels_Data {
 struct Payload {
     uint ox;
     uint oy;
+    uint mapy[AS_GROUP_SIZE];
 };
 
 using Voxel = metal::mesh<Vertex, TriangleOut, 8*STACK_SIZE, 6*STACK_SIZE, topology::triangle>;
 
+// For now it's a direct access but later on we want to replace this with an Octree acceleration structure
+uchar get_voxel(constant Voxels_Data*  voxels_data, uint3 upos) {
+    // The swapped palces between z and y is on purpose
+    return voxels_data->cell[upos.x][upos.z][upos.y];
+}
+
 uint pushCube(
     Voxel outMesh, 
     uint3 upos, 
-    Camera_Data camera_data, 
+    constant Camera_Data&   camera_data,
     float w, uint idx, 
     float4 tone,
     constant Voxels_Data* voxels_data
@@ -199,24 +206,39 @@ uint pushCube(
 
 [[object]]
 void objectMain(
-    uint2 objectIndex               [[threadgroup_position_in_grid]],
-    uint meshletIndex               [[thread_position_in_grid]],
-    uint threadIndex                [[thread_position_in_threadgroup]],
-    object_data Payload& outPayload [[payload]],
+    uint objectIndex                      [[threadgroup_position_in_grid]],
+    uint gtid                             [[thread_position_in_threadgroup]],
+    uint width                            [[threads_per_threadgroup]],
+    constant Voxels_Data*   voxels_data   [[buffer(0)]],
+    object_data Payload& outPayload       [[payload]],
     mesh_grid_properties outGrid)
 {
-    outPayload.ox = objectIndex.x;
-    outPayload.oy = objectIndex.y;
+    uint y = objectIndex / AS_GROUP_SIZE;
+    uint x = objectIndex % AS_GROUP_SIZE;
+    uchar voxel = get_voxel(voxels_data, uint3(x, y, gtid));
+    outPayload.mapy[gtid] = 0;
+    uint visible;
+    // TODO: add frustum culling and neightbour culling
+    if(voxel == 0) {
+        visible = 0;
+    } else {
+        visible = 1;
+    }
 
-    //outPayload.MeshletIndices[threadIndex] = meshletIndex;
-    // Assumes all meshlets are visible
+    // IMPORTANT: simd works in simd groups, not threadgroups, if the threads within a threadgroup is greater than the max simd group, this will fail
+    // TLDR: keep threadPerObjectThreadgroup=32 
+    uint index = simd_prefix_exclusive_sum(visible);
+    if(visible > 0) {
+        outPayload.mapy[index] = gtid;
+    }
     
-    //uint passed = AS_GROUP_SIZE; // TODO: culling
-    //uint visibleMeshletCount = simd_sum(passed);
+    outPayload.ox = x;
+    outPayload.oy = y;
 
-    // TODO: use a better structure and don't spawn mesh shaders for empty space
-    if (threadIndex == 0) {
-        outGrid.set_threadgroups_per_grid(uint3(AS_GROUP_SIZE, 1, 1));
+    uint count = simd_sum(visible);
+    if (gtid == 0) {
+        outGrid.set_threadgroups_per_grid(uint3(count, 1, 1));
+        //outGrid.set_threadgroups_per_grid(uint3(AS_GROUP_SIZE, 1, 1));
     }
 }
 
@@ -226,29 +248,28 @@ void meshMain(
     Voxel outMesh,
     constant Camera_Data&   camera_data   [[buffer(0)]],
     constant Voxels_Data*   voxels_data   [[buffer(1)]],
-    object_data const Payload& payload [[payload]],
+    object_data const Payload& payload    [[payload]],
     uint payloadIndex                       [[threadgroup_position_in_grid]],
-    uint threadIndex                        [[thread_position_in_threadgroup]]
+    uint threadIndex                        [[thread_position_in_threadgroup]],
+    uint tid                                [[thread_position_in_grid]],
+    uint width                              [[threadgroups_per_grid]]
 ) {
     
+
     if (threadIndex == 0) {
         outMesh.set_primitive_count(6);
     }
     
     uint x = payload.ox;
-    uint z = payloadIndex;
+    uint y = payload.oy;
+    uint z =  payload.mapy[payloadIndex];
     float w = 0.5;
 
     uint3 pos;
-    uint triangle_count = 0;
+    pos = uint3(x,y,z);
+    float4 c = float4(float3(0.2), 0.0);
+    pushCube(outMesh, pos, camera_data, w, 0, c, voxels_data);
     
-    uint y =  payload.oy;
-    uchar exists = voxels_data->cell[x][z][y];
-    if(exists > 0) {
-        pos = uint3(x,y,z);
-        float4 c = float4(float3(0.2), 0.0);
-        triangle_count += pushCube(outMesh, pos, camera_data, w, 0, c, voxels_data);
-    }
 }
 
 

@@ -17,7 +17,7 @@ import glm "core:math/linalg/glsl"
 import "engine"
 
 SHADER_SOURCE :: #load("./shaders/pipeline.metal", string)
-GROUP_SIZE :: 128
+GROUP_SIZE :: 32
 
 engine_buffers: engine.EngineBuffers
 pixel_density: f32
@@ -263,10 +263,12 @@ metal_main :: proc() -> (err: ^NS.Error) {
         render_encoder->setDepthStencilState(dso)
         render_encoder->setCullMode(.Back)
 
+        render_encoder->setObjectBuffer(buffer = vox_buffer, offset=0, index=0)
+
         render_encoder->setMeshBuffer(buffer=engine_buffers.camera_buffer,   offset=0, index=0)
         render_encoder->setMeshBuffer(buffer=vox_buffer,                     offset=0, index=1)
 
-        render_encoder->drawMeshThreadgroups(MTL.Size { GROUP_SIZE,GROUP_SIZE,1 }, MTL.Size { 1,1,1 }, MTL.Size { 1,1,1 })
+        render_encoder->drawMeshThreadgroups(MTL.Size { GROUP_SIZE * GROUP_SIZE,1,1 }, MTL.Size { GROUP_SIZE,1,1 }, MTL.Size { 1,1,1 })
 
         render_encoder->endEncoding()
 
