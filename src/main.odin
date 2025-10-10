@@ -15,6 +15,7 @@ import "vox"
 
 import glm "core:math/linalg/glsl"
 import "engine"
+import "world"
 
 SHADER_SOURCE :: #load("./shaders/pipeline.metal", string)
 GROUP_SIZE :: 32
@@ -69,32 +70,32 @@ SparseVoxelContainer :: struct #align(16) {
     cells:[GROUP_SIZE][GROUP_SIZE][GROUP_SIZE]u8
 }
 
-vox_container: ^SparseVoxelContainer
-vox_buffer: ^MTL.Buffer
-
 build_voxel_buffer :: proc(device: ^MTL.Device) {
-    vox_buffer = device->newBuffer(size_of(SparseVoxelContainer), MTL.ResourceStorageModeShared)
-    vox_container = vox_buffer->contentsAsType(SparseVoxelContainer)
-
     if v, ok := vox.load_from_file("./assets/room.vox", context.temp_allocator); ok {
         scene := v.models[0]
         log.debug("loading models", len(scene.voxels))
         for cube in scene.voxels {
             color := v.palette[cube.color_index]
              
-            if(cube.pos.x < GROUP_SIZE && cube.pos.y < GROUP_SIZE && cube.pos.z < GROUP_SIZE) {
-                vox_container.cells[cube.pos.x][cube.pos.y][cube.pos.z] = 1
-                log.debug("loading voxel position", cube.pos)   
-                engine.fillVoxel(cube.pos, 1)
-            }
+            engine.fillVoxel(cube.pos.yzx + {1,1,1}, 1)
         }
     }
 
-      
+    engine.fillVoxel({0,0,0}, 1)
 
-    vox_buffer->didModifyRange(NS.Range_Make(0, size_of(SparseVoxelContainer)))
-    engine.notifyWorldUpdate(&engine_buffers)
-   
+    // engine.fillVoxel({1,1,1}, 1)
+    
+    // for x in  0..<1024 {
+    //     for z in  0..<512 {
+    //         engine.fillVoxel({u8(x),0,u8(z)}, 1)
+    //     }
+    // }
+    // engine.fillVoxel({15,2,0}, 1)
+    // engine.fillVoxel({31,2,0}, 1)
+    // engine.fillVoxel({31,3,0}, 1)
+    // engine.fillVoxel({47,2,0}, 1)
+    // engine.notifyWorldUpdate(&engine_buffers)
+    
 	return
 }
 
@@ -166,7 +167,6 @@ metal_main :: proc() -> (err: ^NS.Error) {
 
     log.debug("Initializing world")
     build_voxel_buffer(device)
-    defer vox_buffer->release()
 
     command_queue := device->newCommandQueue()
     defer command_queue->release()
@@ -268,12 +268,14 @@ metal_main :: proc() -> (err: ^NS.Error) {
         render_encoder->setDepthStencilState(dso)
         render_encoder->setCullMode(.Back)
 
-        render_encoder->setObjectBuffer(buffer = vox_buffer, offset=0, index=0)
+        render_encoder->setObjectBuffer(buffer=engine_buffers.camera_buffer,  offset=0, index=0)
+        render_encoder->setObjectBuffer(buffer=engine_buffers.world_buffer,   offset=0, index=1)
 
-        render_encoder->setMeshBuffer(buffer=engine_buffers.camera_buffer,   offset=0, index=0)
-        render_encoder->setMeshBuffer(buffer=vox_buffer,                     offset=0, index=1)
 
-        render_encoder->drawMeshThreadgroups(MTL.Size { GROUP_SIZE * GROUP_SIZE,1,1 }, MTL.Size { GROUP_SIZE,1,1 }, MTL.Size { 1,1,1 })
+        render_encoder->setMeshBuffer(buffer=engine_buffers.camera_buffer,  offset=0, index=0)
+        render_encoder->setMeshBuffer(buffer=engine_buffers.world_buffer,   offset=0, index=1)
+
+        render_encoder->drawMeshThreadgroups(MTL.Size {world.CHUNKS_MAX,world.CHUNKS_MAX,world.CHUNKS_MAX}, MTL.Size { 1,1,1 }, MTL.Size { 1,1,1 })
 
         render_encoder->endEncoding()
 

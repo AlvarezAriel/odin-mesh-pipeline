@@ -32,6 +32,7 @@ Controls :: struct {
 Camera :: struct #align(16) {
 	transform:  glm.mat4,
     pos: glm.vec4,
+    look: glm.vec4,
 }
 
 
@@ -65,9 +66,11 @@ fillVoxel :: proc(pos: [3]u8, material: u8) {
 }
 
 notifyWorldUpdate :: proc(buffers: ^EngineBuffers) {
-    size: uint = size_of(state.world.header) + size_of(world.Chunk) * len(state.world.chunks)
-    log.debug("notifyWorldUpdate", size)     
-    buffers.world_buffer->didModifyRange(NS.Range_Make(0, NS.UInteger(size)))
+    // size: uint = size_of(state.world.header) + size_of(world.Chunk) * len(state.world.chunks)
+    // log.debug("notifyWorldUpdate", size)     
+    //buffers.world_buffer->didModifyRange(NS.Range_Make(0, NS.UInteger(size)))
+    buffers.world_buffer->didModifyRange(NS.Range_Make(0, size_of(world.SparseVoxels)))
+    //log.debug("HEADERS---->", state.world.header[1][1][1])
 }
 
 update :: proc(delta: time.Duration, aspect: f32, buffers: ^EngineBuffers) {
@@ -90,6 +93,7 @@ update :: proc(delta: time.Duration, aspect: f32, buffers: ^EngineBuffers) {
 
     state.camera.transform = proj * view
     state.camera.pos = state.player.pos
+    state.camera.look = glm.normalize(state.player.look)
 
     buffers.camera_buffer->didModifyRange(NS.Range_Make(0, size_of(Camera)))
 
@@ -142,8 +146,8 @@ calcCameraYaw :: proc(event: ^SDL.Event) {
 release :: proc(buffers: ^EngineBuffers) {
     buffers.camera_buffer->release()
     buffers.world_buffer->release()
-    if(state.world != nil) {
-        delete(state.world.chunks)
-    }
+    // if(state.world != nil) {
+    //     delete(state.world.chunks)
+    // }
 }
 

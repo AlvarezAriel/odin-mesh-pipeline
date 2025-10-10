@@ -25,5 +25,9 @@ References:
 
  
 Other people making voxel engines:
+ - https://www.youtube.com/@johnlin9665
+ - https://www.youtube.com/@frozein
+ - https://www.youtube.com/@_rey
  - https://www.youtube.com/@DouglasDwyer
  - https://www.youtube.com/@GabeRundlett
+ - https://www.youtube.com/@capslpop
