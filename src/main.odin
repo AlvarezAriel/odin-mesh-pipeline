@@ -84,12 +84,17 @@ build_voxel_buffer :: proc(device: ^MTL.Device) {
              
             if(cube.pos.x < GROUP_SIZE && cube.pos.y < GROUP_SIZE && cube.pos.z < GROUP_SIZE) {
                 vox_container.cells[cube.pos.x][cube.pos.y][cube.pos.z] = 1
+                log.debug("loading voxel position", cube.pos)   
+                engine.fillVoxel(cube.pos, 1)
             }
         }
     }
 
+      
+
     vox_buffer->didModifyRange(NS.Range_Make(0, size_of(SparseVoxelContainer)))
-        
+    engine.notifyWorldUpdate(&engine_buffers)
+   
 	return
 }
 

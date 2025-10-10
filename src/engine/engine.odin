@@ -12,6 +12,8 @@ import "core:math"
 import NS  "core:sys/darwin/Foundation"
 import MTL "vendor:darwin/Metal"
 
+import "../world"
+
 Player :: struct {
     pos: glm.vec4,
     speed: glm.vec4,
@@ -32,20 +34,17 @@ Camera :: struct #align(16) {
     pos: glm.vec4,
 }
 
-SparseVoxels :: struct #align(16) {
-    voxels: [512]u8,
-}
 
 EngineState :: struct {
     player: Player,
     controls: Controls,
     camera: ^Camera,
-    sparse_voxels: ^SparseVoxels,
+    world: ^world.SparseVoxels,
 }
 
 EngineBuffers :: struct {
     camera_buffer: ^MTL.Buffer,
-    sparse_voxels_buffer: ^MTL.Buffer,
+    world_buffer: ^MTL.Buffer,
 }
 
 state: EngineState
@@ -54,12 +53,21 @@ init :: proc(device: ^MTL.Device, buffers: ^EngineBuffers) {
     buffers.camera_buffer = device->newBuffer(size_of(Camera), {.StorageModeManaged})
     state.camera = buffers.camera_buffer->contentsAsType(Camera)
 
-    buffers.sparse_voxels_buffer = device->newBuffer(size_of(SparseVoxels), {.StorageModeManaged})
-    state.sparse_voxels = buffers.sparse_voxels_buffer->contentsAsType(SparseVoxels)
+    buffers.world_buffer = device->newBuffer(size_of(world.SparseVoxels), {.StorageModeManaged})
+    state.world = buffers.world_buffer->contentsAsType(world.SparseVoxels)
 
     state.player.pos  = { 0, 1.0, 4, 0}
     state.player.look = { 0, 0, -1, 0}
-    log.debug("initial look", state.player.look)
+}
+
+fillVoxel :: proc(pos: [3]u8, material: u8) {
+    world.putVoxel(state.world, pos, material)
+}
+
+notifyWorldUpdate :: proc(buffers: ^EngineBuffers) {
+    size: uint = size_of(state.world.header) + size_of(world.Chunk) * len(state.world.chunks)
+    log.debug("notifyWorldUpdate", size)     
+    buffers.world_buffer->didModifyRange(NS.Range_Make(0, NS.UInteger(size)))
 }
 
 update :: proc(delta: time.Duration, aspect: f32, buffers: ^EngineBuffers) {
@@ -122,12 +130,7 @@ input :: proc(event: ^SDL.Event) {
 }
 
 calcCameraYaw :: proc(event: ^SDL.Event) {
-
     sensitivity: f32 = 0.001
-
-
-
-
     if event.type == SDL.EventType.MOUSE_MOTION {
         yrotation := glm.mat4Rotate({0,1,0}, -event.motion.xrel * sensitivity)
         xrotation := glm.mat4Rotate(side_look_dir().xyz, event.motion.yrel * sensitivity)
@@ -138,5 +141,9 @@ calcCameraYaw :: proc(event: ^SDL.Event) {
 
 release :: proc(buffers: ^EngineBuffers) {
     buffers.camera_buffer->release()
-    buffers.sparse_voxels_buffer->release()
+    buffers.world_buffer->release()
+    if(state.world != nil) {
+        delete(state.world.chunks)
+    }
 }
+

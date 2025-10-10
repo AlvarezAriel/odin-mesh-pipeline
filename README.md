@@ -16,6 +16,7 @@ As of right it's just a mess, so if you came here looking for a nice example, yo
  - No hardware raytracing will be used.
 
 References:
+ - [Voxel Compression](https://eisenwave.github.io/voxel-compression-docs/) 
  - [Metal by Example](https://metalbyexample.com/mesh-shaders/)
  - Some Metal examples https://github.com/chaoticbob/GraphicsExperiments/blob/main/projects/geometry/113_mesh_shader_instancing_metal/113_mesh_shader_instancing_metal.cpp
  - Blog on Mesh Shaders, mostly for NVidia and AMD https://timur.hu/blog/2022/mesh-and-task-shaders
