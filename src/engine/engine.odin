@@ -67,6 +67,10 @@ fillVoxel :: proc(pos: [3]u32, material: u8) {
     world.putVoxel(state.world, pos, material)
 }
 
+getTotalChunks :: proc() -> u16 {
+    return state.world.last_chunk_idx
+}
+
 notifyWorldUpdate :: proc(buffers: ^EngineBuffers) {
     // size: uint = size_of(state.world.header) + size_of(world.Chunk) * len(state.world.chunks)
     // log.debug("notifyWorldUpdate", size)     

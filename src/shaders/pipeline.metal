@@ -2,9 +2,9 @@
 using namespace metal;
 
 #define STACK_SIZE 1
-#define CHUNKS_MAX 64
+#define CHUNKS_MAX 32
 #define CHUNK_SIZE 32
-#define CONCURRENT_CHUNKS_MAX 512
+#define CONCURRENT_CHUNKS_MAX 1024
 
 struct Vertex {
     float4 PositionCS [[position]];
@@ -74,15 +74,15 @@ uint pushCube(
 
     float4 pos = float4(float(upos.x), float(upos.y), float(upos.z), 0.0);
 
-    bool has_left_neightbour = get_voxel(voxels_data, uint3(upos.x-1,upos.y,upos.z)) > 0;
-    bool has_right_neightbour = get_voxel(voxels_data, uint3(upos.x+1,upos.y,upos.z)) > 0;
-    bool has_top_neightbour = get_voxel(voxels_data, uint3(upos.x,upos.y+1, upos.z)) > 0;
-    bool has_back_neightbour = get_voxel(voxels_data, uint3(upos.x,upos.y, upos.z-1)) > 0;
-    bool has_front_neightbour = get_voxel(voxels_data, uint3(upos.x,upos.y, upos.z+1)) > 0;
-    bool has_bottom_neightbour = get_voxel(voxels_data, uint3(upos.x,upos.y-1,upos.z)) > 0;
+    bool has_left_neightbour = pos.x <= camera_data.pos.x || get_voxel(voxels_data, uint3(upos.x-1,upos.y,upos.z)) > 0;
+    bool has_right_neightbour = camera_data.pos.x <= pos.x || get_voxel(voxels_data, uint3(upos.x+1,upos.y,upos.z)) > 0;
+    bool has_top_neightbour = pos.y >= camera_data.pos.y || get_voxel(voxels_data, uint3(upos.x,upos.y+1, upos.z)) > 0;
+    bool has_back_neightbour = pos.z <= camera_data.pos.z || get_voxel(voxels_data, uint3(upos.x,upos.y, upos.z-1)) > 0;
+    bool has_front_neightbour = camera_data.pos.z <= pos.z || get_voxel(voxels_data, uint3(upos.x,upos.y, upos.z+1)) > 0;
+    bool has_bottom_neightbour = pos.y < camera_data.pos.y || get_voxel(voxels_data, uint3(upos.x,upos.y-1,upos.z)) > 0;
 
-    bool has_back_top_neightbour = get_voxel(voxels_data, uint3(upos.x,upos.y + 1,upos.z - 1)) > 0;
-    bool has_front_top_neightbour = get_voxel(voxels_data, uint3(upos.x,upos.y+1,upos.z+1)) > 0;
+    //bool has_back_top_neightbour = get_voxel(voxels_data, uint3(upos.x,upos.y + 1,upos.z - 1)) > 0;
+    //bool has_front_top_neightbour = get_voxel(voxels_data, uint3(upos.x,upos.y+1,upos.z+1)) > 0;
     
 
     vertices[0].PositionCS = camera_data.transform * (pos + float4(-w, w, -w, 1.0));
@@ -98,13 +98,14 @@ uint pushCube(
     outMesh.set_vertex(vidx + 1, vertices[1]);
     outMesh.set_vertex(vidx + 2, vertices[2]);
     outMesh.set_vertex(vidx + 3, vertices[3]);
+
     outMesh.set_vertex(vidx + 4, vertices[4]);
     outMesh.set_vertex(vidx + 5, vertices[5]);
     outMesh.set_vertex(vidx + 6, vertices[6]);
     outMesh.set_vertex(vidx + 7, vertices[7]);
 
     float3 sunAngle = normalize(camera_data.sun.xyz);
-    if(!has_back_neightbour && pos.z > camera_data.pos.z ) {
+    if(!has_back_neightbour) {
         // Back
         float4 normal = float4(0.0, 0.0, -1.0, 0.0);
         float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.2);
@@ -122,10 +123,10 @@ uint pushCube(
         quads[pidx].Color = tone.rgb + t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
-        
+        triangle_count += 2;
     }
     
-    if(!has_right_neightbour && camera_data.pos.x > pos.x ) {
+    if(!has_right_neightbour ) {
         // Right
         float4 normal = float4(1.0, 0.0, 0.0, 0.0);
         float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.2);
@@ -143,10 +144,10 @@ uint pushCube(
         quads[pidx].Color = tone.rgb + t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
-        
+        triangle_count += 2;
     }
 
-    if(!has_front_neightbour && camera_data.pos.z > pos.z) {
+    if(!has_front_neightbour) {
         // Front
         float4 normal = float4(0.0, 0.0, 1.0, 0.0);
         float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.2);
@@ -164,10 +165,10 @@ uint pushCube(
         quads[pidx].Color = tone.rgb + t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
-        
+        triangle_count += 2;
     }
 
-    if(!has_bottom_neightbour && pos.y > camera_data.pos.y && midx < max_midx) {
+    if(!has_bottom_neightbour && midx < max_midx) {
         // Bottom
         float4 normal = float4(0.0, -1.0, 0.0, 0.0);
         float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.2);
@@ -185,9 +186,10 @@ uint pushCube(
         quads[pidx].Color = tone.rgb + t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
+        triangle_count += 2;
     }
 
-    if(!has_left_neightbour && pos.x > camera_data.pos.x && midx < max_midx) {
+    if(!has_left_neightbour) {
         // Left
         float4 normal = float4(-1.0, 0.0, 0.0, 0.0);
         float3 t = float3((0.5 + dot(sunAngle, normal.rgb)) * 0.2);
@@ -205,10 +207,10 @@ uint pushCube(
         quads[pidx].Color = tone.rgb + t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
-        
+        triangle_count += 2;
     }
 
-    if(!has_top_neightbour && pos.y < camera_data.pos.y && midx < max_midx - 5) {
+    if(!has_top_neightbour) {
         // Top
         float4 normal = float4(0.0, 1.0, 0.0, 0.0);
         float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.2);
@@ -225,7 +227,7 @@ uint pushCube(
         outMesh.set_index(midx++, vidx + 7);
         quads[pidx].Color = tone.rgb + t;
         outMesh.set_primitive(pidx, quads[pidx]);
-           
+        triangle_count += 2;   
     }
 
     return triangle_count;
@@ -249,13 +251,31 @@ void objectMain(
             outPayload.oy = objectIndex.y;
             outPayload.oz = objectIndex.z;
             if (gtid == 0) {
-                outGrid.set_threadgroups_per_grid(uint3(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE));
+                outGrid.set_threadgroups_per_grid(uint3(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE) );
             }
         }
     }
     
 }
 
+uint processVoxel(
+    Voxel outMesh, 
+    uint3 pos, 
+    constant Camera_Data&   camera_data,
+    uint idx, 
+    constant Voxels_Data* voxels_data
+) {
+    float3 fpos = float3(pos);
+    float vision_cone = dot(normalize(fpos - camera_data.pos.xyz), normalize(camera_data.look.xyz));
+
+    uint primitiveCount = 0;
+    if(vision_cone > 0.1 && get_voxel(voxels_data, pos) > 0) {
+        float4 c = float4(float3(0.8), 1.0);
+        primitiveCount += pushCube(outMesh, pos, camera_data, 0.5, idx, c, voxels_data);
+    }
+
+    return primitiveCount;
+}
 
 [[mesh]]
 void meshMain(
@@ -268,57 +288,21 @@ void meshMain(
     uint3 tid                             [[thread_position_in_grid]],
     uint width                            [[threadgroups_per_grid]]
 ) {
-
-    if (threadIndex.x == 0) {
-        outMesh.set_primitive_count(6);
-    }
-    
     uint x = payload.ox;
     uint y = payload.oy;
     uint z =  payload.oz;
     float w = 0.5;
+    uint primitiveCount = 0;
 
     uint3 pos;
     pos = uint3(x,y,z)*CHUNK_SIZE + chunkPos;
-    float3 fpos = float3(pos);
-    float vision_cone = dot(normalize(fpos - camera_data.pos.xyz), normalize(camera_data.look.xyz));
-    if(vision_cone > 0.1 && get_voxel(voxels_data, pos) > 0) {
+    primitiveCount += processVoxel(
+        outMesh, pos, camera_data, 0, voxels_data
+    );
 
-        float3 sun = camera_data.sun.xyz;
-        float3 starting = fpos;
-        float maxSteps = CHUNK_SIZE*CHUNKS_MAX / 2;
-        float hit = 0.8;
-        uint3 last_chunk = uint3(payload.ox, payload.oy, payload.oz);
-        uchar should_skip = 0;
-        for(float i = 1.0; i < maxSteps; i += 1.5) {
-            uint3 ray = uint3(starting + sun * i);
-            uint3 chunk_pos = ray / CHUNK_SIZE;
-            if(last_chunk.x == chunk_pos.x && last_chunk.y == chunk_pos.y  && last_chunk.z == chunk_pos.z) {
-                if(should_skip == 1) {
-                    continue;
-                } else {
-                    if(get_voxel(voxels_data, ray) > 0) {
-                        hit = 0.0;
-                        break;
-                    }
-                }
-            } else {
-                should_skip = 0;
-                last_chunk = chunk_pos;
-                uint tag = voxels_data->tags[chunk_pos.x][chunk_pos.y][chunk_pos.z];
-                if(tag == 2) {
-                    if(get_voxel(voxels_data, ray) > 0) {
-                        hit = 0.0;
-                        break;
-                    }
-                } else {
-                    i += CHUNK_SIZE;
-                    should_skip = 1;
-                }
-            }
-        }
-        float4 c = float4(float3(1.0) * hit, 1.0);
-        pushCube(outMesh, pos, camera_data, w, 0, c, voxels_data);
+
+    if (threadIndex.x == 0) {
+        outMesh.set_primitive_count(primitiveCount);
     }
 }
 
@@ -327,11 +311,6 @@ struct FSInput
     Vertex vtx;
     TriangleOut tri;
 };
-
-constexpr sampler DepthSampler(
-	filter::linear,
-	mip_filter::linear
-);
 
 [[fragment]]
 float4 fragmentMain(

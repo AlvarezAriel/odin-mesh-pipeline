@@ -85,6 +85,9 @@ build_voxel_buffer :: proc(device: ^MTL.Device) {
 
     engine.fillVoxel({0,0,0}, 1)
 
+    log.debug("Total Chunks loaded:", engine.getTotalChunks())
+    
+
     // engine.fillVoxel({1,1,1}, 1)
     
     // for x in  0..<1024 {
@@ -268,7 +271,7 @@ metal_main :: proc() -> (err: ^NS.Error) {
 
         render_encoder->setRenderPipelineState(pso)
         render_encoder->setDepthStencilState(dso)
-        render_encoder->setCullMode(.Back)
+        render_encoder->setCullMode(.None)
 
         render_encoder->setObjectBuffer(buffer=engine_buffers.camera_buffer,  offset=0, index=0)
         render_encoder->setObjectBuffer(buffer=engine_buffers.world_buffer,   offset=0, index=1)
