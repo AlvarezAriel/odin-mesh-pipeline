@@ -60,7 +60,7 @@ init :: proc(device: ^MTL.Device, buffers: ^EngineBuffers) {
 
     state.player.pos  = { 0, 1.0, 4, 0}
     state.player.look = { 0, 0, -1, 0}
-    state.camera.sun =  {-1,1,-0.5, 0};
+    state.camera.sun =  {1.13,1.1,-0.5, 0};
 }
 
 fillVoxel :: proc(pos: [3]u32, material: u8) {
@@ -83,7 +83,7 @@ update :: proc(delta: time.Duration, aspect: f32, buffers: ^EngineBuffers) {
     
     d := f32(time.duration_seconds(delta))
     state.player.speed.x = state.controls.left - state.controls.right
-    voxes_per_second :f32 = d * 10
+    voxes_per_second :f32 = d * 100
 
     direction := glm.normalize(state.player.look * { 1, 0, 1, 0})
 

@@ -66,13 +66,13 @@ build_depth_stencil :: proc(device: ^MTL.Device) -> (dso: ^MTL.DepthStencilState
 }
 
 build_voxel_buffer :: proc(device: ^MTL.Device) {
-    if v, ok := vox.load_from_file("./assets/room.vox", context.temp_allocator); ok {
+    if v, ok := vox.load_from_file("./assets/scene_2.vox", context.temp_allocator); ok {
         scene := v.models[0]
-        log.debug("loading models", len(scene.voxels))
+        log.debug("loading models", len(v.models))
         for cube in scene.voxels {
-            if(cube.pos.y > 128 || cube.pos.y > 128 || cube.pos.z > 64) { continue } 
+            if(cube.pos.y > 255 || cube.pos.y > 255 || cube.pos.z > 64) { continue } 
 
-            basePos :[3]u32 = [3]u32 { u32(cube.pos.y), u32(cube.pos.z), u32(cube.pos.x) } * 2;
+            basePos :[3]u32 = [3]u32 { u32(cube.pos.x), u32(cube.pos.z), u32(cube.pos.y) } * 2;
             for x in 0..=1 {
                 for y in 0..=1 {
                     for z in 0..=1 { 
@@ -109,6 +109,8 @@ build_voxel_buffer :: proc(device: ^MTL.Device) {
     //         }
     //     }
     // }
+
+    
     log.debug("Total Chunks loaded:", engine.getTotalChunks())
     
 
