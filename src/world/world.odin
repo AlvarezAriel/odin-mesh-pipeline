@@ -4,8 +4,8 @@ import "core:testing"
 import "core:fmt"
 import "core:log"
 
-CHUNKS_MAX :: 32
-CHUNK_SIZE :: 32
+CHUNKS_MAX :: 64
+CHUNK_SIZE :: 16
 CONCURRENT_CHUNKS_MAX :: 1024
 
 TAG_EMPTY :: 0

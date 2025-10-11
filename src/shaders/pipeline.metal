@@ -1,9 +1,9 @@
 #include <metal_stdlib>
 using namespace metal;
 
-#define STACK_SIZE 1
-#define CHUNKS_MAX 32
-#define CHUNK_SIZE 32
+#define STACK_SIZE 8
+#define CHUNKS_MAX 64
+#define CHUNK_SIZE 16
 #define CONCURRENT_CHUNKS_MAX 1024
 
 struct Vertex {
@@ -39,6 +39,7 @@ struct Payload {
     uint ox;
     uint oy;
     uint oz;
+    ushort chunkId;
 };
 
 using Voxel = metal::mesh<Vertex, TriangleOut, 8*STACK_SIZE, 6*STACK_SIZE, topology::triangle>;
@@ -70,16 +71,16 @@ uint pushCube(
     uint pidx = idx * 6;
 
     uint max_midx = idx * (36/2) + 18;
-    uint max_pidx = idx * (12/2) + 6;
+    uint max_pidx = idx * 6 + 6;
 
     float4 pos = float4(float(upos.x), float(upos.y), float(upos.z), 0.0);
 
-    bool has_left_neightbour = pos.x <= camera_data.pos.x || get_voxel(voxels_data, uint3(upos.x-1,upos.y,upos.z)) > 0;
-    bool has_right_neightbour = camera_data.pos.x <= pos.x || get_voxel(voxels_data, uint3(upos.x+1,upos.y,upos.z)) > 0;
-    bool has_top_neightbour = pos.y >= camera_data.pos.y || get_voxel(voxels_data, uint3(upos.x,upos.y+1, upos.z)) > 0;
-    bool has_back_neightbour = pos.z <= camera_data.pos.z || get_voxel(voxels_data, uint3(upos.x,upos.y, upos.z-1)) > 0;
-    bool has_front_neightbour = camera_data.pos.z <= pos.z || get_voxel(voxels_data, uint3(upos.x,upos.y, upos.z+1)) > 0;
-    bool has_bottom_neightbour = pos.y < camera_data.pos.y || get_voxel(voxels_data, uint3(upos.x,upos.y-1,upos.z)) > 0;
+    bool has_left_neightbour = pos.x - w <= camera_data.pos.x  || get_voxel(voxels_data, uint3(upos.x-1,upos.y,upos.z)) > 0;
+    bool has_right_neightbour = camera_data.pos.x <= pos.x + w || get_voxel(voxels_data, uint3(upos.x+1,upos.y,upos.z)) > 0;
+    bool has_top_neightbour = pos.y >= camera_data.pos.y       || get_voxel(voxels_data, uint3(upos.x,upos.y+1, upos.z)) > 0;
+    bool has_back_neightbour = pos.z - w <= camera_data.pos.z  || get_voxel(voxels_data, uint3(upos.x,upos.y, upos.z-1)) > 0;
+    bool has_front_neightbour = camera_data.pos.z <= pos.z + w || get_voxel(voxels_data, uint3(upos.x,upos.y, upos.z+1)) > 0;
+    bool has_bottom_neightbour = pos.y -w < camera_data.pos.y  || get_voxel(voxels_data, uint3(upos.x,upos.y-1,upos.z)) > 0;
 
     //bool has_back_top_neightbour = get_voxel(voxels_data, uint3(upos.x,upos.y + 1,upos.z - 1)) > 0;
     //bool has_front_top_neightbour = get_voxel(voxels_data, uint3(upos.x,upos.y+1,upos.z+1)) > 0;
@@ -189,7 +190,7 @@ uint pushCube(
         triangle_count += 2;
     }
 
-    if(!has_left_neightbour) {
+    if(!has_left_neightbour && midx < max_midx) {
         // Left
         float4 normal = float4(-1.0, 0.0, 0.0, 0.0);
         float3 t = float3((0.5 + dot(sunAngle, normal.rgb)) * 0.2);
@@ -210,7 +211,7 @@ uint pushCube(
         triangle_count += 2;
     }
 
-    if(!has_top_neightbour) {
+    if(!has_top_neightbour && midx < max_midx) {
         // Top
         float4 normal = float4(0.0, 1.0, 0.0, 0.0);
         float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.2);
@@ -246,16 +247,16 @@ void objectMain(
     
     float vision_cone = dot(normalize(float3(objectIndex * CHUNK_SIZE) - camera_data.pos.xyz), normalize(camera_data.look.xyz));
     if(vision_cone > 0.0 || (distance(float3(objectIndex)*CHUNK_SIZE + float3(CHUNK_SIZE/2), camera_data.pos.xyz) < CHUNK_SIZE)) {
-            if(voxels_data->tags[objectIndex.x][objectIndex.y][objectIndex.z] == 2) {
+        if(voxels_data->tags[objectIndex.x][objectIndex.y][objectIndex.z] == 2) {
             outPayload.ox = objectIndex.x;
             outPayload.oy = objectIndex.y;
             outPayload.oz = objectIndex.z;
+            outPayload.chunkId = voxels_data->idxs[objectIndex.x][objectIndex.y][objectIndex.z];
             if (gtid == 0) {
-                outGrid.set_threadgroups_per_grid(uint3(CHUNK_SIZE, CHUNK_SIZE, CHUNK_SIZE) );
+                outGrid.set_threadgroups_per_grid(uint3(CHUNK_SIZE/2, CHUNK_SIZE/2, CHUNK_SIZE/2) );
             }
         }
     }
-    
 }
 
 uint processVoxel(
@@ -269,8 +270,10 @@ uint processVoxel(
     float vision_cone = dot(normalize(fpos - camera_data.pos.xyz), normalize(camera_data.look.xyz));
 
     uint primitiveCount = 0;
-    if(vision_cone > 0.1 && get_voxel(voxels_data, pos) > 0) {
-        float4 c = float4(float3(0.8), 1.0);
+    if(vision_cone > 0.1) {
+        //idx = 1;
+        //uint actualIdx = simd_prefix_exclusive_sum(idx);
+        float4 c = float4(float3(0.0), 1.0);
         primitiveCount += pushCube(outMesh, pos, camera_data, 0.5, idx, c, voxels_data);
     }
 
@@ -294,16 +297,21 @@ void meshMain(
     float w = 0.5;
     uint primitiveCount = 0;
 
-    uint3 pos;
-    pos = uint3(x,y,z)*CHUNK_SIZE + chunkPos;
-    primitiveCount += processVoxel(
-        outMesh, pos, camera_data, 0, voxels_data
-    );
-
-
     if (threadIndex.x == 0) {
-        outMesh.set_primitive_count(primitiveCount);
+        // TODO: this amount can be optimized, since in reality we will always have at most half of this
+        // but since we only know after processing, it's hard (?) to get the correct mesh ID without serializing threads.
+        outMesh.set_primitive_count(6*STACK_SIZE);
     }
+    uint3 insidePos = threadIndex + chunkPos*2;
+
+    if(voxels_data->chunks[payload.chunkId][insidePos.x][insidePos.y][insidePos.z] > 0) {
+        uint3 pos = uint3(x,y,z)*CHUNK_SIZE + insidePos;
+        uint idx = threadIndex.x + threadIndex.y*2 + threadIndex.z*4;
+        primitiveCount += processVoxel(
+            outMesh, pos, camera_data, idx, voxels_data
+        );
+    }
+    //uint totalPrimitives = simd_sum(primitiveCount);
 }
 
 struct FSInput
@@ -316,7 +324,8 @@ struct FSInput
 float4 fragmentMain(
     FSInput input [[stage_in]]
 ) {
-    float3 color = float3(0.1) + input.tri.Color * 0.9;
-    float3 result = mix(color.rgb*0.5, color.rgb*4.0, input.vtx.PositionCS.w); 
-    return float4(result, 1.0);
+    float3 color = mix(0.0, 2.0, input.tri.Color.r);
+    float3 result = mix(0.0, 0.1, input.vtx.PositionCS.w - 0.5); 
+    float3 c2 = mix(float3(0.1, 0.17, 0.35), float3(1.0, 0.71, 0.73), color.r);
+    return float4(c2.r, c2.g, c2.b, 1.0);
 }
