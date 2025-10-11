@@ -328,9 +328,16 @@ struct FSInput
     TriangleOut tri;
 };
 
+constexpr sampler DepthSampler(
+	filter::linear,
+	mip_filter::linear
+);
+
 [[fragment]]
-float4 fragmentMain(FSInput input [[stage_in]])
-{
+float4 fragmentMain(
+    FSInput input [[stage_in]]
+) {
     float3 color = float3(0.1) + input.tri.Color * 0.9;
-    return float4(color, 1.0);
+    float3 result = mix(color.rgb*0.5, color.rgb*4.0, input.vtx.PositionCS.w); 
+    return float4(result, 1.0);
 }
