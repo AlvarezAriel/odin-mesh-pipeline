@@ -18,7 +18,6 @@ import "engine"
 import "world"
 
 SHADER_SOURCE :: #load("./shaders/pipeline.metal", string)
-GROUP_SIZE :: 32
 
 engine_buffers: engine.EngineBuffers
 pixel_density: f32
@@ -66,18 +65,21 @@ build_depth_stencil :: proc(device: ^MTL.Device) -> (dso: ^MTL.DepthStencilState
     return
 }
 
-SparseVoxelContainer :: struct #align(16) {
-    cells:[GROUP_SIZE][GROUP_SIZE][GROUP_SIZE]u8
-}
-
 build_voxel_buffer :: proc(device: ^MTL.Device) {
     if v, ok := vox.load_from_file("./assets/room.vox", context.temp_allocator); ok {
         scene := v.models[0]
         log.debug("loading models", len(scene.voxels))
         for cube in scene.voxels {
-            color := v.palette[cube.color_index]
-             
-            engine.fillVoxel(cube.pos.yzx + {1,1,1}, 1)
+            if(cube.pos.y > 128 || cube.pos.y > 128 || cube.pos.z > 64) { continue } 
+
+            basePos :[3]u32 = [3]u32 { u32(cube.pos.y), u32(cube.pos.z), u32(cube.pos.x) } * 2;
+            for x in 0..=1 {
+                for y in 0..=1 {
+                    for z in 0..=1 { 
+                        engine.fillVoxel(basePos + {u32(x),u32(y),u32(z)} + {2,0,2}, 1)
+                    }
+                }
+            }
         }
     }
 

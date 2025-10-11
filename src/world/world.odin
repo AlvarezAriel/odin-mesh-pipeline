@@ -4,9 +4,9 @@ import "core:testing"
 import "core:fmt"
 import "core:log"
 
-CHUNKS_MAX :: 32
+CHUNKS_MAX :: 64
 CHUNK_SIZE :: 32
-CONCURRENT_CHUNKS_MAX :: 128
+CONCURRENT_CHUNKS_MAX :: 512
 
 TAG_EMPTY :: 0
 TAG_FULL :: 1
@@ -15,14 +15,19 @@ TAG_USED :: 2
 
 // TODO: turn this into an Octree with Morton Z-Ordering
 SparseVoxels :: struct #align(16) {
-    last_chunk_idx: u8,
+    last_chunk_idx: u16,
     tags: [CHUNKS_MAX][CHUNKS_MAX][CHUNKS_MAX]u8,
     materials: [CHUNKS_MAX][CHUNKS_MAX][CHUNKS_MAX]u8,
-    idxs: [CHUNKS_MAX][CHUNKS_MAX][CHUNKS_MAX]u8,
+    idxs: [CHUNKS_MAX][CHUNKS_MAX][CHUNKS_MAX]u16,
     chunks: [CONCURRENT_CHUNKS_MAX][CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE]u8,
 }
 
-putVoxel :: proc(sv: ^SparseVoxels, pos: [3]u8, material: u8) {
+putVoxel :: proc(sv: ^SparseVoxels, pos: [3]u32, material: u8) {
+
+    if(sv.last_chunk_idx >= CONCURRENT_CHUNKS_MAX) {
+        return
+    }
+
     p := pos / CHUNK_SIZE
     chunkPos := pos % CHUNK_SIZE
 
@@ -32,8 +37,9 @@ putVoxel :: proc(sv: ^SparseVoxels, pos: [3]u8, material: u8) {
 
         sv.last_chunk_idx += 1
         sv.idxs[p.x][p.y][p.z] = sv.last_chunk_idx
+        log.debug("new header id", sv.last_chunk_idx, " pos ", chunkPos)
         sv.chunks[sv.last_chunk_idx][chunkPos.x][chunkPos.y][chunkPos.z] = material
-        log.debug("new header", sv.last_chunk_idx, " pos ", p)
+
     } else {
         idx := sv.idxs[p.x][p.y][p.z]
         sv.chunks[idx][chunkPos.x][chunkPos.y][chunkPos.z] = material

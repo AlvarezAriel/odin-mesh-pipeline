@@ -22,6 +22,7 @@ References:
  - Blog on Mesh Shaders, mostly for NVidia and AMD https://timur.hu/blog/2022/mesh-and-task-shaders
  - [Advanced Mesh Shaders | Martin Fuller | DirectX Developer Day](https://www.youtube.com/watch?v=0sJ_g-aWriQ)
  - [Modern Renedering Introduction](https://alelievr.github.io/Modern-Rendering-Introduction/MeshShaders/)
+ - https://dubiousconst282.github.io/2024/10/03/voxel-ray-tracing/
 
  
 Other people making voxel engines:
@@ -31,3 +32,4 @@ Other people making voxel engines:
  - https://www.youtube.com/@DouglasDwyer
  - https://www.youtube.com/@GabeRundlett
  - https://www.youtube.com/@capslpop
+ - https://www.youtube.com/@TheEngineeringMonkey

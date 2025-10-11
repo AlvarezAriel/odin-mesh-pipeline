@@ -2,16 +2,15 @@
 using namespace metal;
 
 #define STACK_SIZE 1
-#define CHUNKS_MAX 32
+#define CHUNKS_MAX 64
 #define CHUNK_SIZE 32
-#define CONCURRENT_CHUNKS_MAX 128
+#define CONCURRENT_CHUNKS_MAX 512
 
 struct Vertex {
     float4 PositionCS [[position]];
 };
 
 struct TriangleOut {
-    float3 Normal [[flat]];
     float3 Color [[flat]];
 };
 
@@ -19,6 +18,7 @@ struct Camera_Data {
     float4x4 transform;
     float4 pos;
     float4 look;
+    float4 sun;
 };
 
 struct ChunkHeader {
@@ -28,10 +28,10 @@ struct ChunkHeader {
 };
 
 struct Voxels_Data {
-    uchar chunkCount;
+    ushort chunkCount;
     uchar tags[CHUNKS_MAX][CHUNKS_MAX][CHUNKS_MAX];
     uchar materials[CHUNKS_MAX][CHUNKS_MAX][CHUNKS_MAX];
-    uchar idxs[CHUNKS_MAX][CHUNKS_MAX][CHUNKS_MAX];
+    ushort idxs[CHUNKS_MAX][CHUNKS_MAX][CHUNKS_MAX];
     uchar chunks[CONCURRENT_CHUNKS_MAX][CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE];
 };
 
@@ -103,23 +103,23 @@ uint pushCube(
     outMesh.set_vertex(vidx + 6, vertices[6]);
     outMesh.set_vertex(vidx + 7, vertices[7]);
 
-    
+    float3 sunAngle = normalize(camera_data.sun.xyz);
     if(!has_back_neightbour && pos.z > camera_data.pos.z ) {
         // Back
         float4 normal = float4(0.0, 0.0, -1.0, 0.0);
+        float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.2);
+
         outMesh.set_index(midx++, vidx + 0);
         outMesh.set_index(midx++, vidx + 1);
         outMesh.set_index(midx++, vidx + 2);
-        quads[pidx].Normal = normal.rgb;
-        quads[pidx].Color = tone.rgb;
+        quads[pidx].Color = tone.rgb + t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
 
         outMesh.set_index(midx++, vidx + 0);
         outMesh.set_index(midx++, vidx + 2);
         outMesh.set_index(midx++, vidx + 3);
-        quads[pidx].Normal = normal.rgb;
-        quads[pidx].Color = tone.rgb;
+        quads[pidx].Color = tone.rgb + t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
         
@@ -128,20 +128,19 @@ uint pushCube(
     if(!has_right_neightbour && camera_data.pos.x > pos.x ) {
         // Right
         float4 normal = float4(1.0, 0.0, 0.0, 0.0);
+        float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.2);
 
         outMesh.set_index(midx++, vidx + 7);
         outMesh.set_index(midx++, vidx + 3);
         outMesh.set_index(midx++, vidx + 2);
-        quads[pidx].Normal = normal.rgb;
-        quads[pidx].Color = tone.rgb;
+        quads[pidx].Color = tone.rgb + t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
 
         outMesh.set_index(midx++, vidx + 6);
         outMesh.set_index(midx++, vidx + 7);
         outMesh.set_index(midx++, vidx + 2);
-        quads[pidx].Normal = normal.rgb;
-        quads[pidx].Color = tone.rgb;
+        quads[pidx].Color = tone.rgb + t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
         
@@ -150,20 +149,19 @@ uint pushCube(
     if(!has_front_neightbour && camera_data.pos.z > pos.z) {
         // Front
         float4 normal = float4(0.0, 0.0, 1.0, 0.0);
+        float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.2);
 
         outMesh.set_index(midx++, vidx + 5);
         outMesh.set_index(midx++, vidx + 7);
         outMesh.set_index(midx++, vidx + 6);
-        quads[pidx].Normal = normal.rgb;
-        quads[pidx].Color = tone.rgb;
+        quads[pidx].Color = tone.rgb + t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
 
         outMesh.set_index(midx++, vidx + 5);
         outMesh.set_index(midx++, vidx + 4);
         outMesh.set_index(midx++, vidx + 7);
-        quads[pidx].Normal = normal.rgb;
-        quads[pidx].Color = tone.rgb;
+        quads[pidx].Color = tone.rgb + t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
         
@@ -172,20 +170,19 @@ uint pushCube(
     if(!has_bottom_neightbour && pos.y > camera_data.pos.y && midx < max_midx) {
         // Bottom
         float4 normal = float4(0.0, -1.0, 0.0, 0.0);
+        float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.2);
 
         outMesh.set_index(midx++, vidx + 5);
         outMesh.set_index(midx++, vidx + 6);
         outMesh.set_index(midx++, vidx + 2);
-        quads[pidx].Normal = normal.rgb;
-        quads[pidx].Color = tone.rgb;
+        quads[pidx].Color = tone.rgb + t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
 
         outMesh.set_index(midx++, vidx + 5);
         outMesh.set_index(midx++, vidx + 2);
         outMesh.set_index(midx++, vidx + 1);
-        quads[pidx].Normal = normal.rgb;
-        quads[pidx].Color = tone.rgb;
+        quads[pidx].Color = tone.rgb + t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
     }
@@ -193,20 +190,19 @@ uint pushCube(
     if(!has_left_neightbour && pos.x > camera_data.pos.x && midx < max_midx) {
         // Left
         float4 normal = float4(-1.0, 0.0, 0.0, 0.0);
+        float3 t = float3((0.5 + dot(sunAngle, normal.rgb)) * 0.2);
 
         outMesh.set_index(midx++, vidx + 0);
         outMesh.set_index(midx++, vidx + 4);
         outMesh.set_index(midx++, vidx + 1);
-        quads[pidx].Normal = normal.rgb;
-        quads[pidx].Color = tone.rgb;
+        quads[pidx].Color = tone.rgb + t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
 
         outMesh.set_index(midx++, vidx + 4);
         outMesh.set_index(midx++, vidx + 5);
         outMesh.set_index(midx++, vidx + 1);
-        quads[pidx].Normal = normal.rgb;
-        quads[pidx].Color = tone.rgb;
+        quads[pidx].Color = tone.rgb + t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
         
@@ -215,20 +211,19 @@ uint pushCube(
     if(!has_top_neightbour && pos.y < camera_data.pos.y && midx < max_midx - 5) {
         // Top
         float4 normal = float4(0.0, 1.0, 0.0, 0.0);
+        float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.2);
 
         outMesh.set_index(midx++, vidx + 7);
         outMesh.set_index(midx++, vidx + 0);
         outMesh.set_index(midx++, vidx + 3);
-        quads[pidx].Normal = normal.rgb;
-        quads[pidx].Color = tone.rgb;
+        quads[pidx].Color = tone.rgb + t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
 
         outMesh.set_index(midx++, vidx + 4);
         outMesh.set_index(midx++, vidx + 0);
         outMesh.set_index(midx++, vidx + 7);
-        quads[pidx].Normal = normal.rgb;
-        quads[pidx].Color = tone.rgb;
+        quads[pidx].Color = tone.rgb + t;
         outMesh.set_primitive(pidx, quads[pidx]);
            
     }
@@ -285,9 +280,44 @@ void meshMain(
 
     uint3 pos;
     pos = uint3(x,y,z)*CHUNK_SIZE + chunkPos;
-    float vision_cone = dot(normalize(float3(pos) - camera_data.pos.xyz), normalize(camera_data.look.xyz));
+    float3 fpos = float3(pos);
+    float vision_cone = dot(normalize(fpos - camera_data.pos.xyz), normalize(camera_data.look.xyz));
     if(vision_cone > 0.1 && get_voxel(voxels_data, pos) > 0) {
-        float4 c = float4(float3(chunkPos) / CHUNK_SIZE, 0.0);
+
+        float3 sun = camera_data.sun.xyz;
+        float3 starting = fpos;
+        float maxSteps = CHUNK_SIZE*CHUNKS_MAX / 2;
+        float hit = 0.8;
+        uint3 last_chunk = uint3(payload.ox, payload.oy, payload.oz);
+        uchar should_skip = 0;
+        for(float i = 1.0; i < maxSteps; i += 1.5) {
+            uint3 ray = uint3(starting + sun * i);
+            uint3 chunk_pos = ray / CHUNK_SIZE;
+            if(last_chunk.x == chunk_pos.x && last_chunk.y == chunk_pos.y  && last_chunk.z == chunk_pos.z) {
+                if(should_skip == 1) {
+                    continue;
+                } else {
+                    if(get_voxel(voxels_data, ray) > 0) {
+                        hit = 0.0;
+                        break;
+                    }
+                }
+            } else {
+                should_skip = 0;
+                last_chunk = chunk_pos;
+                uint tag = voxels_data->tags[chunk_pos.x][chunk_pos.y][chunk_pos.z];
+                if(tag == 2) {
+                    if(get_voxel(voxels_data, ray) > 0) {
+                        hit = 0.0;
+                        break;
+                    }
+                } else {
+                    i += CHUNK_SIZE;
+                    should_skip = 1;
+                }
+            }
+        }
+        float4 c = float4(float3(1.0) * hit, 1.0);
         pushCube(outMesh, pos, camera_data, w, 0, c, voxels_data);
     }
 }

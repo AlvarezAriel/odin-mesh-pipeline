@@ -33,6 +33,7 @@ Camera :: struct #align(16) {
 	transform:  glm.mat4,
     pos: glm.vec4,
     look: glm.vec4,
+    sun: glm.vec4,
 }
 
 
@@ -59,9 +60,10 @@ init :: proc(device: ^MTL.Device, buffers: ^EngineBuffers) {
 
     state.player.pos  = { 0, 1.0, 4, 0}
     state.player.look = { 0, 0, -1, 0}
+    state.camera.sun =  {-1,1,-0.5, 0};
 }
 
-fillVoxel :: proc(pos: [3]u8, material: u8) {
+fillVoxel :: proc(pos: [3]u32, material: u8) {
     world.putVoxel(state.world, pos, material)
 }
 
