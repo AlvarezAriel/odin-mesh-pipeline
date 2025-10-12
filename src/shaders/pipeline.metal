@@ -10,6 +10,7 @@ using namespace metal;
 
 struct Vertex {
     float4 PositionCS [[position]];
+    float3 VColor;
 };
 
 struct TriangleOut {
@@ -90,17 +91,17 @@ uint pushCube(
 
     // TOOD: remove this, it's just a way to hack materials for now
     if(upos.y == 0) {
-        float4 green = mix(float4(0.15, 0.6, 0.27, 0.0), float4(0.3, 0.97, 0.42, 0.0), tone*5);
+        float4 green = mix(float4(0.15, 0.6, 0.27, 0.0), float4(0.3, 0.97, 0.42, 0.0), tone);
         tone = green;
     } else {
         if(upos.y > 3 && upos.x < 200 && upos.z > 128) {
-            float4 red = mix(float4(0.6, 0., 0.27, 0.0), float4(0.97, 0.2, 0.42, 0.0), tone*5);
+            float4 red = mix(float4(0.6, 0., 0.27, 0.0), float4(0.97, 0.2, 0.42, 0.0), tone);
             tone = red;
         } else {
-            tone = float4(mix(0.2, 1.0, tone*5));
+            tone = float4(mix(0.2, 1.0, tone));
         }
     }
-
+    tone = min(tone, float4(1.0));
     Vertex vertices[8];
     TriangleOut quads[6];
     uint vidx = idx * 8;
@@ -132,6 +133,64 @@ uint pushCube(
     vertices[6].PositionCS = camera_data.transform * (pos + float4(+w, -w, w, 1.0));
     vertices[7].PositionCS = camera_data.transform * (pos + float4(+w, w, w, 1.0));
 
+    vertices[0].VColor = float3(1.0);
+    vertices[1].VColor = float3(1.0);
+    vertices[2].VColor = float3(1.0);
+    vertices[3].VColor = float3(1.0);
+    vertices[4].VColor = float3(1.0);
+    vertices[5].VColor = float3(1.0);
+    vertices[6].VColor = float3(1.0);
+    vertices[7].VColor = float3(1.0);
+
+    float shadow = 0.6;
+    // if(!has_front_neightbour) {
+    //     if(get_voxel(voxels_data, uint3(upos.x,upos.y - 1, upos.z+1)) > 0) {
+    //         vertices[5].VColor = float3(shadow);
+    //         vertices[6].VColor = float3(shadow);
+    //     }
+    // }
+
+    // if(!has_right_neightbour) {
+    //     if(get_voxel(voxels_data, uint3(upos.x+1,upos.y - 1, upos.z)) > 0) {
+    //         vertices[2].VColor = float3(shadow);
+    //         vertices[6].VColor = float3(shadow);
+    //     }
+    // }
+
+    if(!has_top_neightbour) {
+        bool has_top_left = get_voxel(voxels_data, uint3(upos.x-1,upos.y + 1, upos.z)) > 0;
+        bool has_top_front = get_voxel(voxels_data, uint3(upos.x,upos.y + 1, upos.z+1)) > 0;
+
+        if(has_top_left) {
+            vertices[0].VColor = float3(shadow);
+            vertices[4].VColor = float3(shadow);
+        }
+
+        if(get_voxel(voxels_data, uint3(upos.x,upos.y + 1, upos.z-1)) > 0) {
+            vertices[0].VColor = float3(shadow);
+            vertices[3].VColor = float3(shadow);
+            // ??
+        }
+
+        if(get_voxel(voxels_data, uint3(upos.x-1,upos.y + 1, upos.z-1)) > 0) {
+            vertices[0].VColor = float3(shadow*1.2);
+        }
+
+        if(get_voxel(voxels_data, uint3(upos.x-1,upos.y + 1, upos.z+1)) > 0) {
+            vertices[4].VColor = min(vertices[4].VColor, float3(shadow*1.2));
+        }
+
+        if(has_top_front) {
+            vertices[4].VColor = float3(shadow);
+            vertices[7].VColor = float3(shadow);
+        }
+
+        if(has_top_left && has_top_front) {
+            vertices[4].VColor = float3(shadow);
+        }
+    }
+
+
     outMesh.set_vertex(vidx + 0, vertices[0]);
     outMesh.set_vertex(vidx + 1, vertices[1]);
     outMesh.set_vertex(vidx + 2, vertices[2]);
@@ -146,7 +205,7 @@ uint pushCube(
     if(!has_back_neightbour) {
         // Back
         float4 normal = float4(0.0, 0.0, -1.0, 0.0);
-        float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.2);
+        float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.5);
 
         outMesh.set_index(midx++, vidx + 0);
         outMesh.set_index(midx++, vidx + 1);
@@ -167,7 +226,7 @@ uint pushCube(
     if(!has_right_neightbour ) {
         // Right
         float4 normal = float4(1.0, 0.0, 0.0, 0.0);
-        float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.2);
+        float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.5);
 
         outMesh.set_index(midx++, vidx + 7);
         outMesh.set_index(midx++, vidx + 3);
@@ -188,7 +247,7 @@ uint pushCube(
     if(!has_front_neightbour) {
         // Front
         float4 normal = float4(0.0, 0.0, 1.0, 0.0);
-        float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.2);
+        float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.5);
 
         outMesh.set_index(midx++, vidx + 5);
         outMesh.set_index(midx++, vidx + 7);
@@ -209,7 +268,7 @@ uint pushCube(
     if(!has_bottom_neightbour && midx < max_midx) {
         // Bottom
         float4 normal = float4(0.0, -1.0, 0.0, 0.0);
-        float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.2);
+        float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.5);
 
         outMesh.set_index(midx++, vidx + 5);
         outMesh.set_index(midx++, vidx + 6);
@@ -230,7 +289,7 @@ uint pushCube(
     if(!has_left_neightbour && midx < max_midx) {
         // Left
         float4 normal = float4(-1.0, 0.0, 0.0, 0.0);
-        float3 t = float3((0.5 + dot(sunAngle, normal.rgb)) * 0.2);
+        float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.5);
 
         outMesh.set_index(midx++, vidx + 0);
         outMesh.set_index(midx++, vidx + 4);
@@ -251,7 +310,7 @@ uint pushCube(
     if(!has_top_neightbour && midx < max_midx) {
         // Top
         float4 normal = float4(0.0, 1.0, 0.0, 0.0);
-        float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.2);
+        float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.5);
 
         outMesh.set_index(midx++, vidx + 7);
         outMesh.set_index(midx++, vidx + 0);
@@ -362,8 +421,8 @@ struct FSInput
 float4 fragmentMain(
     FSInput input [[stage_in]]
 ) {
-    float3 color = mix(0.0, 2.0, input.tri.Color.r);
-    float3 result = mix(0.0, 0.1, input.vtx.PositionCS.w - 0.5); 
-    float3 c2 = mix(float3(0.1, 0.17, 0.35), float3(1.0, 0.71, 0.73), color.r);
-    return float4(input.tri.Color.rgb, 1.0);
+    // float3 color = mix(0.0, 2.0, input.tri.Color.r);
+    // float3 result = mix(0.0, 0.1, input.vtx.PositionCS.w - 0.5); 
+    // float3 c2 = mix(float3(0.1, 0.17, 0.35), float3(1.0, 0.71, 0.73), color.r);
+    return float4(input.tri.Color.rgb * input.vtx.VColor.r, 1.0);
 }
