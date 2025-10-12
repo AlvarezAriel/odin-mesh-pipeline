@@ -4,9 +4,12 @@ import "core:testing"
 import "core:fmt"
 import "core:log"
 
-CHUNKS_MAX :: 64
-CHUNK_SIZE :: 16
+CHUNKS_MAX :: 128
+CHUNK_SIZE :: 128
 CONCURRENT_CHUNKS_MAX :: 3000
+
+CHUNK_W :: 128
+CHUNK_H :: 64
 
 TAG_EMPTY :: 0
 TAG_FULL :: 1
@@ -15,83 +18,40 @@ TAG_USED :: 2
 
 // TODO: turn this into an Octree with Morton Z-Ordering
 SparseVoxels :: struct #align(16) {
-    last_chunk_idx: u16,
-    tags: [CHUNKS_MAX][CHUNKS_MAX][CHUNKS_MAX]u8,
-    materials: [CHUNKS_MAX][CHUNKS_MAX][CHUNKS_MAX]u8,
-    idxs: [CHUNKS_MAX][CHUNKS_MAX][CHUNKS_MAX]u16,
-    chunks: [CONCURRENT_CHUNKS_MAX][CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE]u8,
+    chunks: [CHUNK_W][CHUNK_H][CHUNK_W]u8,
 }
 
-putVoxel :: proc(sv: ^SparseVoxels, pos: [3]u32, material: u8) {
-
-    if(sv.last_chunk_idx >= CONCURRENT_CHUNKS_MAX) {
-        return
-    }
-
-    p := pos / CHUNK_SIZE
-    chunkPos := pos % CHUNK_SIZE
-
-    if(sv.tags[p.x][p.y][p.z] == TAG_EMPTY) {
-        sv.tags[p.x][p.y][p.z] = TAG_USED
-        sv.materials[p.x][p.y][p.z] = material
-
-        sv.last_chunk_idx += 1
-        sv.idxs[p.x][p.y][p.z] = sv.last_chunk_idx
-        log.debug("new header id", sv.last_chunk_idx, " pos ", chunkPos)
-        sv.chunks[sv.last_chunk_idx][chunkPos.x][chunkPos.y][chunkPos.z] = material
-
-    } else {
-        idx := sv.idxs[p.x][p.y][p.z]
-        sv.chunks[idx][chunkPos.x][chunkPos.y][chunkPos.z] = material
-    }
-    // sv.tags
-    // c: ^Chunk
-    // chunkPos := pos % CHUNKS_MAX
-
-    // if(header.tag == TAG_EMPTY) {
-    //     chunk := Chunk { }
-        
-    //     //size, _ := append(&(sv.chunks), chunk)
-
-    //     //header.idx = u8(size - 1)
-    //     header.tag = TAG_USED
-    //     log.debug("NEW HEADER", pos / CHUNKS_MAX)
-    // }
-
-    //c = &(sv.chunks[header.idx])
-
-    //c.cells[chunkPos.x][chunkPos.y][chunkPos.z] = material
+putVoxel :: proc(sv: ^SparseVoxels, pos: [3]u32, material: u8) -> u8 {
+    //log.debug("PUT", pos)
+    chunk:u8 = sv.chunks[pos.x / 2][pos.y / 2][pos.z / 2] | (0b00000001 << u8((pos.x % 2)+(pos.y%2)*2+(pos.z%2)*4))
+    sv.chunks[pos.x / 2][pos.y / 2][pos.z / 2] = chunk
+    return chunk
 }
 
-// getVoxel :: proc(sv: ^SparseVoxels, pos: [3]u8) -> u8 {
-//     p := pos / CHUNKS_MAX
-//     header := _chunkForPosition(sv, pos)
-//     if(header.tag == TAG_EMPTY) {
-//         return 0
-//     }
+getVoxel :: proc(sv: ^SparseVoxels, pos: [3]u32) -> u8 {
+    tag:u8 = (0b00000001 << u8((pos.x % 2)+(pos.y%2)*2+(pos.z%2)*4))
 
-//     chunkPos := pos % CHUNKS_MAX
+    return sv.chunks[pos.x / 2][pos.y / 2][pos.z / 2] & tag
+}
 
-//     return 1;//return  sv.chunks[header.idx].cells[chunkPos.x][chunkPos.y][chunkPos.z]
-// }
+@(test)
+put_voxel_test :: proc(t: ^testing.T) {
+    voxels := new(SparseVoxels)
+    defer free(voxels)
 
-// @(test)
-// put_voxel_test :: proc(t: ^testing.T) {
-//     voxels := SparseVoxels {}
-//     defer delete(voxels.chunks)
+    pos: [3]u32 = {0,0,0}
+    chunk := putVoxel(voxels, pos, 1)
+    testing.expectf(t, chunk == 1, "Expecting chunks_code=1, got %d", chunk)
 
-//     pos: [3]u8 = {2,2,2}
+    pos = {0,1,0}
+    chunk = putVoxel(voxels, pos, 1)
+    testing.expectf(t, chunk == 5, "Expecting chunks_code=1, got %d", chunk)
 
-//     putVoxel(&voxels, pos, 5)
-//     tag := voxels.header[0][0][0].tag
-//     testing.expectf(t, tag == TAG_USED, "Expecting TAG_USED, got %d", tag)
+    pos = {0,0,0}
+    is_present := getVoxel(voxels, pos)
+    testing.expectf(t, is_present > 0, "Expecting is_present > 0, got %d", is_present)
 
-//     chunks_size := len(voxels.chunks)
-//     testing.expectf(t, chunks_size == 1, "Expecting chunks_size=1, got %d", chunks_size)
-
-//     cell_material := voxels.chunks[0].cells[2][2][2]
-//     testing.expectf(t, cell_material == 5, "Expecting cell_material=5, got %d", cell_material)
-
-//     material := getVoxel(&voxels, pos)
-//     testing.expectf(t, material == 5, "Expecting 5, got %d", material)
-// }
+    pos = {0,0,1}
+    is_present = getVoxel(voxels, pos)
+    testing.expectf(t, is_present == 0, "Expecting is_present == 0, got %d", is_present)
+}

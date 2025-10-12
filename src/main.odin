@@ -70,16 +70,10 @@ build_voxel_buffer :: proc(device: ^MTL.Device) {
         scene := v.models[0]
         log.debug("loading models", len(v.models))
         for cube in scene.voxels {
-            if(cube.pos.y > 255 || cube.pos.y > 255 || cube.pos.z > 64) { continue } 
+            if(cube.pos.y >= 255 || cube.pos.y >= 255 || cube.pos.z >= 64) { continue } 
 
-            basePos :[3]u32 = [3]u32 { u32(cube.pos.x), u32(cube.pos.z), u32(cube.pos.y) } * 2;
-            for x in 0..=1 {
-                for y in 0..=1 {
-                    for z in 0..=1 { 
-                        engine.fillVoxel(basePos + {u32(x),u32(y),u32(z)} + {2,0,2}, 1)
-                    }
-                }
-            }
+            basePos :[3]u32 = [3]u32 { u32(cube.pos.x), u32(cube.pos.z), u32(cube.pos.y) };
+            engine.fillVoxel(basePos, 1)
         }
     }
 
@@ -110,7 +104,12 @@ build_voxel_buffer :: proc(device: ^MTL.Device) {
     //     }
     // }
 
-    
+    // engine.fillVoxel({1,1,1}, 1)
+    // engine.fillVoxel({2,1,1}, 1)
+    // engine.fillVoxel({3,1,1}, 1)
+    // engine.fillVoxel({4,1,1}, 1)
+
+
     log.debug("Total Chunks loaded:", engine.getTotalChunks())
     
 
@@ -306,7 +305,7 @@ metal_main :: proc() -> (err: ^NS.Error) {
         render_encoder->setMeshBuffer(buffer=engine_buffers.camera_buffer,  offset=0, index=0)
         render_encoder->setMeshBuffer(buffer=engine_buffers.world_buffer,   offset=0, index=1)
 
-        render_encoder->drawMeshThreadgroups(MTL.Size {world.CHUNKS_MAX,world.CHUNKS_MAX,world.CHUNKS_MAX}, MTL.Size { 1,1,1 }, MTL.Size { 2,2,2 })
+        render_encoder->drawMeshThreadgroups(MTL.Size {128,64,128}, MTL.Size { 1,1,1 }, MTL.Size { 1,1,1 })
 
         render_encoder->endEncoding()
 

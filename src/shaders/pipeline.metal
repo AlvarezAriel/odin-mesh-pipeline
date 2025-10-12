@@ -3,7 +3,9 @@ using namespace metal;
 
 #define STACK_SIZE 8
 #define CHUNKS_MAX 64
-#define CHUNK_SIZE 16
+#define CHUNK_W 128
+#define CHUNK_H 64
+#define INNER_SIZE 2
 #define CONCURRENT_CHUNKS_MAX 3000
 
 struct Vertex {
@@ -28,30 +30,23 @@ struct ChunkHeader {
 };
 
 struct Voxels_Data {
-    ushort chunkCount;
-    uchar tags[CHUNKS_MAX][CHUNKS_MAX][CHUNKS_MAX];
-    uchar materials[CHUNKS_MAX][CHUNKS_MAX][CHUNKS_MAX];
-    ushort idxs[CHUNKS_MAX][CHUNKS_MAX][CHUNKS_MAX];
-    uchar chunks[CONCURRENT_CHUNKS_MAX][CHUNK_SIZE][CHUNK_SIZE][CHUNK_SIZE];
+    uchar chunks[CHUNK_W][CHUNK_H][CHUNK_W];
 };
 
 struct Payload {
     uint ox;
     uint oy;
     uint oz;
-    ushort chunkId;
 };
 
-using Voxel = metal::mesh<Vertex, TriangleOut, 8*STACK_SIZE, 6*STACK_SIZE, topology::triangle>;
+using Voxel = metal::mesh<Vertex, TriangleOut, 8, 12, topology::triangle>;
 
 // For now it's a direct access but later on we want to replace this with an Octree acceleration structure
 uchar get_voxel(constant Voxels_Data*  voxels_data, uint3 upos) {
     // The swapped palces between z and y is on purpose
-    uint3 idx_pos = upos / CHUNK_SIZE;
-    uint3 inside_chunk_pos = upos % CHUNK_SIZE;
-
-    uint chunk_idx = voxels_data->idxs[idx_pos.x][idx_pos.y][idx_pos.z];
-    return voxels_data->chunks[chunk_idx][inside_chunk_pos.x][inside_chunk_pos.y][inside_chunk_pos.z];
+    uchar chunk = voxels_data->chunks[upos.x/INNER_SIZE][upos.y/INNER_SIZE][upos.z/INNER_SIZE];
+    uchar tag = uchar(1) << uchar((upos.x % 2) + (upos.y % 2)*INNER_SIZE + (upos.z % 2)*INNER_SIZE*INNER_SIZE);
+    return tag & chunk;
 }
 
 
@@ -61,35 +56,15 @@ float lightCalc(
     constant Voxels_Data* voxels_data
 ) {
     float3 sun = camera_data.sun.xyz;
-    float maxSteps = 64.0;
+    float maxSteps = 32.0;
     uint3 last_chunk = uint3(0,0,0);
     uchar should_skip = 0;
     float hit = 0.25;
-    for(float i = 1.0; i < maxSteps; i += 1.0) {
+    for(float i = 1.0; i < maxSteps; i += 0.7) {
         uint3 ray = uint3(starting + sun * i);
-        uint3 chunk_pos = ray / CHUNK_SIZE;
-        if(last_chunk.x == chunk_pos.x && last_chunk.y == chunk_pos.y  && last_chunk.z == chunk_pos.z) {
-            if(should_skip == 1) {
-                continue;
-            } else {
-                if(get_voxel(voxels_data, ray) > 0) {
-                    hit = 0.0;
-                    break;
-                }
-            }
-        } else {
-            should_skip = 0;
-            last_chunk = chunk_pos;
-            uint tag = voxels_data->tags[chunk_pos.x][chunk_pos.y][chunk_pos.z];
-            if(tag == 2) {
-                if(get_voxel(voxels_data, ray) > 0) {
-                    hit = 0.0;
-                    break;
-                }
-            } else {
-                i += CHUNK_SIZE;
-                should_skip = 1;
-            }
+        if(get_voxel(voxels_data, ray) > 0) {
+            hit = 0.0;
+            break;
         }
     }
 
@@ -107,11 +82,14 @@ uint pushCube(
     uint triangle_count = 0;
     float4 pos = float4(float(upos.x), float(upos.y), float(upos.z), 0.0);
 
-    tone = lightCalc(pos.xyz + float3(+w,w,+w), camera_data, voxels_data);
-    tone += lightCalc(pos.xyz+ float3(+w,w,-w), camera_data, voxels_data);
-    tone += lightCalc(pos.xyz+ float3(-w,w,+w), camera_data, voxels_data);
-    tone += lightCalc(pos.xyz+ float3(-w,w,-w), camera_data, voxels_data);
-    tone = float4(mix(0.2, 1.0, tone*4));
+    // tone =  lightCalc(pos.xyz + float3(+w,w,+w), camera_data, voxels_data);
+    // tone += lightCalc(pos.xyz + float3(+w,w,-w), camera_data, voxels_data);
+    // tone += lightCalc(pos.xyz + float3(-w,w,+w), camera_data, voxels_data);
+    // tone += lightCalc(pos.xyz + float3(-w,w,-w), camera_data, voxels_data);
+    tone =  lightCalc(pos.xyz + float3( 0,0, 0), camera_data, voxels_data);
+    // tone += lightCalc(pos.xyz + float3(+w,w,-w), camera_data, voxels_data);
+    // tone += lightCalc(pos.xyz + float3(-w,w,+w), camera_data, voxels_data);
+    tone = float4(mix(0.2, 1.0, tone*5));
 
     Vertex vertices[8];
     TriangleOut quads[6];
@@ -285,7 +263,7 @@ uint pushCube(
 
 [[object]]
 void objectMain(
-    uint3 objectIndex                      [[threadgroup_position_in_grid]],
+    uint3 objectIndex                     [[threadgroup_position_in_grid]],
     uint gtid                             [[thread_position_in_threadgroup]],
     uint width                            [[threads_per_threadgroup]],
     constant Camera_Data&   camera_data   [[buffer(0)]],
@@ -293,16 +271,15 @@ void objectMain(
     object_data Payload& outPayload       [[payload]],
     mesh_grid_properties outGrid)
 {
-    
-    float vision_cone = dot(normalize(float3(objectIndex * CHUNK_SIZE) - camera_data.pos.xyz), normalize(camera_data.look.xyz));
-    if(vision_cone > 0.0 || (distance(float3(objectIndex)*CHUNK_SIZE + float3(CHUNK_SIZE/2), camera_data.pos.xyz) < CHUNK_SIZE)) {
-        if(voxels_data->tags[objectIndex.x][objectIndex.y][objectIndex.z] == 2) {
+
+    float vision_cone = dot(normalize(float3(objectIndex * 2) - camera_data.pos.xyz), normalize(camera_data.look.xyz));
+    if(vision_cone > 0.0 || (distance(float3(objectIndex)*2 + float3(1), camera_data.pos.xyz) < 2)) {
+        if(voxels_data->chunks[objectIndex.x][objectIndex.y][objectIndex.z] > 0) {
             outPayload.ox = objectIndex.x;
             outPayload.oy = objectIndex.y;
             outPayload.oz = objectIndex.z;
-            outPayload.chunkId = voxels_data->idxs[objectIndex.x][objectIndex.y][objectIndex.z];
             if (gtid == 0) {
-                outGrid.set_threadgroups_per_grid(uint3(CHUNK_SIZE/2, CHUNK_SIZE/2, CHUNK_SIZE/2) );
+                outGrid.set_threadgroups_per_grid(uint3(INNER_SIZE, INNER_SIZE, INNER_SIZE) );
             }
         }
     }
@@ -343,23 +320,25 @@ void meshMain(
     uint x = payload.ox;
     uint y = payload.oy;
     uint z =  payload.oz;
+
+    uint3 upos = uint3(x,y,z);
     float w = 0.5;
     uint primitiveCount = 0;
 
     if (threadIndex.x == 0) {
         // TODO: this amount can be optimized, since in reality we will always have at most half of this
         // but since we only know after processing, it's hard (?) to get the correct mesh ID without serializing threads.
-        outMesh.set_primitive_count(6*STACK_SIZE);
+        outMesh.set_primitive_count(12);
     }
-    uint3 insidePos = threadIndex + chunkPos*2;
+    uint3 insidePos = upos * 2 + chunkPos;
 
-    if(voxels_data->chunks[payload.chunkId][insidePos.x][insidePos.y][insidePos.z] > 0) {
-        uint3 pos = uint3(x,y,z)*CHUNK_SIZE + insidePos;
-        uint idx = threadIndex.x + threadIndex.y*2 + threadIndex.z*4;
+    if(get_voxel(voxels_data, insidePos) > 0) {
+        //uint idx = threadIndex.x + threadIndex.y*2 + threadIndex.z*4;
         primitiveCount += processVoxel(
-            outMesh, pos, camera_data, idx, voxels_data
+            outMesh, insidePos, camera_data, 0, voxels_data
         );
     }
+    
     //uint totalPrimitives = simd_sum(primitiveCount);
 }
 

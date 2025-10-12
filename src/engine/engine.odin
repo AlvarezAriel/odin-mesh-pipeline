@@ -68,7 +68,7 @@ fillVoxel :: proc(pos: [3]u32, material: u8) {
 }
 
 getTotalChunks :: proc() -> u16 {
-    return state.world.last_chunk_idx
+    return 0
 }
 
 notifyWorldUpdate :: proc(buffers: ^EngineBuffers) {
