@@ -51,25 +51,58 @@ uint64_t get_voxel(constant Voxels_Data*  voxels_data, uint3 upos) {
 }
 
 
+
+float hammingWeight(uint64_t x)
+{
+    const uint64_t m1  = 0x5555555555555555; //binary: 0101...
+    const uint64_t m2  = 0x3333333333333333; //binary: 00110011..
+    const uint64_t m4  = 0x0f0f0f0f0f0f0f0f; //binary:  4 zeros,  4 ones ...
+    const uint64_t h01 = 0x0101010101010101; //the sum of 256 to the power of 0,1,2,3...
+    x -= (x >> 1) & m1;             //put count of each 2 bits into those 2 bits
+    x = (x & m2) + ((x >> 2) & m2); //put count of each 4 bits into those 4 bits 
+    x = (x + (x >> 4)) & m4;        //put count of each 8 bits into those 8 bits 
+    return float((x * h01) >> 56) / 64.0;  //returns left 8 bits of x + (x<<8) + (x<<16) + (x<<24) + ... as a normalized float
+}
+
 float lightCalc(
     float3 starting, 
     constant Camera_Data&   camera_data,
     constant Voxels_Data* voxels_data
 ) {
     float3 sun = camera_data.sun.xyz;
-    float maxSteps = 32.0;
-    uint3 last_chunk = uint3(0,0,0);
-    uchar should_skip = 0;
-    float hit = 0.25;
-    for(float i = 1.0; i < maxSteps; i += 0.7) {
-        uint3 ray = uint3(starting + sun * i);
+    float maxSteps = 6.0;
+
+    float3 startingBlock = starting/INNER_SIZE;
+
+    float light = 1.0;
+
+    float lodStep = 1.0;
+    float lodMaxSteps = 8.0;
+    for(lodStep = 1.1; lodStep < lodMaxSteps; lodStep += 0.8) {
+        float3 dir = starting + sun * lodStep;
+        uint3 ray = uint3(dir);
         if(get_voxel(voxels_data, ray) > 0) {
-            hit = 0.0;
-            break;
+            light = 0.5 - mix(0.5, 0.1, distance(dir, starting)/lodMaxSteps);
+            if(light < 0.1) {
+                return light;
+            }
+        }
+    }  
+
+    for(float i = lodStep/INNER_SIZE; i < maxSteps; i += 1.05) {
+        uint3 ray = uint3(startingBlock + sun * i);
+        uint64_t block = voxels_data->chunks[ray.x][ray.y][ray.z];
+        float weight = hammingWeight(block);
+        if(weight > 0.9) {
+            return 0.0;
+        }
+        light -= hammingWeight(block) * (1.5 - i/maxSteps);
+        if(light <= 0.01) {
+            return 0.01;
         }
     }
-
-    return hit;
+     
+    return light;
 }
 
 uint pushCube(
@@ -84,24 +117,29 @@ uint pushCube(
     float4 pos = float4(float(upos.x), float(upos.y), float(upos.z), 0.0);
 
     tone =  lightCalc(pos.xyz + float3(+w,w,+w), camera_data, voxels_data);
-    tone += lightCalc(pos.xyz + float3(+w,w,-w), camera_data, voxels_data);
-    tone += lightCalc(pos.xyz + float3(-w,w,+w), camera_data, voxels_data);
-    tone += lightCalc(pos.xyz + float3(-w,w,-w), camera_data, voxels_data);
-    // tone =  lightCalc(pos.xyz + float3( 0,0, 0), camera_data, voxels_data);
+    tone +=  lightCalc(pos.xyz + float3(0,0,0), camera_data, voxels_data);
+    // tone += lightCalc(pos.xyz + float3(+w,w,-w), camera_data, voxels_data);
+    // tone += lightCalc(pos.xyz + float3(-w,w,+w), camera_data, voxels_data);
+    // tone += lightCalc(pos.xyz + float3(-w,w,-w), camera_data, voxels_data);
+    tone = tone / 2.0;
+    tone = mix(0.05, 1.0, tone);
+
+
+    //tone =  lightCalc(pos.xyz + float3( 0,0, 0), camera_data, voxels_data);
 
     // TOOD: remove this, it's just a way to hack materials for now
-    if(upos.y == 0) {
-        float4 green = mix(float4(0.15, 0.6, 0.27, 0.0), float4(0.3, 0.97, 0.42, 0.0), tone);
-        tone = green;
-    } else {
-        if(upos.y > 3 && upos.x < 200 && upos.z > 128) {
-            float4 red = mix(float4(0.6, 0., 0.27, 0.0), float4(0.97, 0.2, 0.42, 0.0), tone);
-            tone = red;
-        } else {
-            tone = float4(mix(0.2, 1.0, tone));
-        }
-    }
-    tone = min(tone, float4(1.0));
+    // if(upos.y == 0) {
+    //     float4 green = mix(float4(0.15, 0.6, 0.27, 0.0), float4(0.3, 0.97, 0.42, 0.0), tone);
+    //     tone = green;
+    // } else {
+    //     if(upos.y > 3 && upos.x < 200 && upos.z > 128) {
+    //         float4 red = mix(float4(0.55, 0.14, 0.19, 0.0), float4(0.95, 0.28, 0.32, 0.0), tone);
+    //         tone = red;
+    //     } else {
+    //         tone = float4(mix(0.2, 1.0, tone));
+    //     }
+    // }
+    // tone = min(tone, float4(1.0));
     Vertex vertices[8];
     TriangleOut quads[6];
     uint vidx = idx * 8;
@@ -157,38 +195,38 @@ uint pushCube(
     //     }
     // }
 
-    if(!has_top_neightbour) {
-        bool has_top_left = get_voxel(voxels_data, uint3(upos.x-1,upos.y + 1, upos.z)) > 0;
-        bool has_top_front = get_voxel(voxels_data, uint3(upos.x,upos.y + 1, upos.z+1)) > 0;
+    // if(!has_top_neightbour) {
+    //     bool has_top_left = get_voxel(voxels_data, uint3(upos.x-1,upos.y + 1, upos.z)) > 0;
+    //     bool has_top_front = get_voxel(voxels_data, uint3(upos.x,upos.y + 1, upos.z+1)) > 0;
 
-        if(has_top_left) {
-            vertices[0].VColor = float3(shadow);
-            vertices[4].VColor = float3(shadow);
-        }
+    //     if(has_top_left) {
+    //         vertices[0].VColor = float3(shadow);
+    //         vertices[4].VColor = float3(shadow);
+    //     }
 
-        if(get_voxel(voxels_data, uint3(upos.x,upos.y + 1, upos.z-1)) > 0) {
-            vertices[0].VColor = float3(shadow);
-            vertices[3].VColor = float3(shadow);
-            // ??
-        }
+    //     if(get_voxel(voxels_data, uint3(upos.x,upos.y + 1, upos.z-1)) > 0) {
+    //         vertices[0].VColor = float3(shadow);
+    //         vertices[3].VColor = float3(shadow);
+    //         // ??
+    //     }
 
-        if(get_voxel(voxels_data, uint3(upos.x-1,upos.y + 1, upos.z-1)) > 0) {
-            vertices[0].VColor = float3(shadow*1.2);
-        }
+    //     if(get_voxel(voxels_data, uint3(upos.x-1,upos.y + 1, upos.z-1)) > 0) {
+    //         vertices[0].VColor = float3(shadow*1.2);
+    //     }
 
-        if(get_voxel(voxels_data, uint3(upos.x-1,upos.y + 1, upos.z+1)) > 0) {
-            vertices[4].VColor = min(vertices[4].VColor, float3(shadow*1.2));
-        }
+    //     if(get_voxel(voxels_data, uint3(upos.x-1,upos.y + 1, upos.z+1)) > 0) {
+    //         vertices[4].VColor = min(vertices[4].VColor, float3(shadow*1.2));
+    //     }
 
-        if(has_top_front) {
-            vertices[4].VColor = float3(shadow);
-            vertices[7].VColor = float3(shadow);
-        }
+    //     if(has_top_front) {
+    //         vertices[4].VColor = float3(shadow);
+    //         vertices[7].VColor = float3(shadow);
+    //     }
 
-        if(has_top_left && has_top_front) {
-            vertices[4].VColor = float3(shadow);
-        }
-    }
+    //     if(has_top_left && has_top_front) {
+    //         vertices[4].VColor = float3(shadow);
+    //     }
+    // }
 
 
     outMesh.set_vertex(vidx + 0, vertices[0]);
@@ -201,11 +239,14 @@ uint pushCube(
     outMesh.set_vertex(vidx + 6, vertices[6]);
     outMesh.set_vertex(vidx + 7, vertices[7]);
 
+    float normalStrenght = 0.7;
+
     float3 sunAngle = normalize(camera_data.sun.xyz);
     if(!has_back_neightbour) {
         // Back
         float4 normal = float4(0.0, 0.0, -1.0, 0.0);
-        float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.5);
+        float t = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
+        t = mix(normalStrenght, 1.0, t);
 
         outMesh.set_index(midx++, vidx + 0);
         outMesh.set_index(midx++, vidx + 1);
@@ -226,7 +267,8 @@ uint pushCube(
     if(!has_right_neightbour ) {
         // Right
         float4 normal = float4(1.0, 0.0, 0.0, 0.0);
-        float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.5);
+        float t = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
+        t = mix(normalStrenght, 1.0, t);
 
         outMesh.set_index(midx++, vidx + 7);
         outMesh.set_index(midx++, vidx + 3);
@@ -247,7 +289,8 @@ uint pushCube(
     if(!has_front_neightbour) {
         // Front
         float4 normal = float4(0.0, 0.0, 1.0, 0.0);
-        float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.5);
+        float t = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
+        t = mix(normalStrenght, 1.0, t);
 
         outMesh.set_index(midx++, vidx + 5);
         outMesh.set_index(midx++, vidx + 7);
@@ -268,7 +311,8 @@ uint pushCube(
     if(!has_bottom_neightbour && midx < max_midx) {
         // Bottom
         float4 normal = float4(0.0, -1.0, 0.0, 0.0);
-        float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.5);
+        float t = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
+        t = mix(normalStrenght, 1.0, t);
 
         outMesh.set_index(midx++, vidx + 5);
         outMesh.set_index(midx++, vidx + 6);
@@ -289,7 +333,8 @@ uint pushCube(
     if(!has_left_neightbour && midx < max_midx) {
         // Left
         float4 normal = float4(-1.0, 0.0, 0.0, 0.0);
-        float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.5);
+        float t = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
+        t = mix(normalStrenght, 1.0, t);
 
         outMesh.set_index(midx++, vidx + 0);
         outMesh.set_index(midx++, vidx + 4);
@@ -310,7 +355,8 @@ uint pushCube(
     if(!has_top_neightbour && midx < max_midx) {
         // Top
         float4 normal = float4(0.0, 1.0, 0.0, 0.0);
-        float3 t = float3((1.0 + dot(sunAngle, normal.rgb)) * 0.5);
+        float t = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
+        t = mix(normalStrenght, 1.0, t);
 
         outMesh.set_index(midx++, vidx + 7);
         outMesh.set_index(midx++, vidx + 0);
