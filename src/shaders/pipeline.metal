@@ -3,9 +3,9 @@ using namespace metal;
 
 #define STACK_SIZE 8
 #define CHUNKS_MAX 64
-#define CHUNK_W 128
-#define CHUNK_H 64
-#define INNER_SIZE 2
+#define CHUNK_W 64
+#define CHUNK_H 32
+#define INNER_SIZE 4
 #define CONCURRENT_CHUNKS_MAX 3000
 
 struct Vertex {
@@ -30,7 +30,7 @@ struct ChunkHeader {
 };
 
 struct Voxels_Data {
-    uchar chunks[CHUNK_W][CHUNK_H][CHUNK_W];
+    uint64_t chunks[CHUNK_W][CHUNK_H][CHUNK_W];
 };
 
 struct Payload {
@@ -42,10 +42,10 @@ struct Payload {
 using Voxel = metal::mesh<Vertex, TriangleOut, 8, 12, topology::triangle>;
 
 // For now it's a direct access but later on we want to replace this with an Octree acceleration structure
-uchar get_voxel(constant Voxels_Data*  voxels_data, uint3 upos) {
+uint64_t get_voxel(constant Voxels_Data*  voxels_data, uint3 upos) {
     // The swapped palces between z and y is on purpose
-    uchar chunk = voxels_data->chunks[upos.x/INNER_SIZE][upos.y/INNER_SIZE][upos.z/INNER_SIZE];
-    uchar tag = uchar(1) << uchar((upos.x % 2) + (upos.y % 2)*INNER_SIZE + (upos.z % 2)*INNER_SIZE*INNER_SIZE);
+    uint64_t chunk = voxels_data->chunks[upos.x/INNER_SIZE][upos.y/INNER_SIZE][upos.z/INNER_SIZE];
+    uint64_t tag = uint64_t(1) << uint64_t((upos.x % INNER_SIZE) + (upos.y % INNER_SIZE)*INNER_SIZE + (upos.z % INNER_SIZE)*INNER_SIZE*INNER_SIZE);
     return tag & chunk;
 }
 
@@ -82,14 +82,24 @@ uint pushCube(
     uint triangle_count = 0;
     float4 pos = float4(float(upos.x), float(upos.y), float(upos.z), 0.0);
 
-    // tone =  lightCalc(pos.xyz + float3(+w,w,+w), camera_data, voxels_data);
-    // tone += lightCalc(pos.xyz + float3(+w,w,-w), camera_data, voxels_data);
-    // tone += lightCalc(pos.xyz + float3(-w,w,+w), camera_data, voxels_data);
-    // tone += lightCalc(pos.xyz + float3(-w,w,-w), camera_data, voxels_data);
-    tone =  lightCalc(pos.xyz + float3( 0,0, 0), camera_data, voxels_data);
-    // tone += lightCalc(pos.xyz + float3(+w,w,-w), camera_data, voxels_data);
-    // tone += lightCalc(pos.xyz + float3(-w,w,+w), camera_data, voxels_data);
-    tone = float4(mix(0.2, 1.0, tone*5));
+    tone =  lightCalc(pos.xyz + float3(+w,w,+w), camera_data, voxels_data);
+    tone += lightCalc(pos.xyz + float3(+w,w,-w), camera_data, voxels_data);
+    tone += lightCalc(pos.xyz + float3(-w,w,+w), camera_data, voxels_data);
+    tone += lightCalc(pos.xyz + float3(-w,w,-w), camera_data, voxels_data);
+    // tone =  lightCalc(pos.xyz + float3( 0,0, 0), camera_data, voxels_data);
+
+    // TOOD: remove this, it's just a way to hack materials for now
+    if(upos.y == 0) {
+        float4 green = mix(float4(0.15, 0.6, 0.27, 0.0), float4(0.3, 0.97, 0.42, 0.0), tone*5);
+        tone = green;
+    } else {
+        if(upos.y > 3 && upos.x < 200 && upos.z > 128) {
+            float4 red = mix(float4(0.6, 0., 0.27, 0.0), float4(0.97, 0.2, 0.42, 0.0), tone*5);
+            tone = red;
+        } else {
+            tone = float4(mix(0.2, 1.0, tone*5));
+        }
+    }
 
     Vertex vertices[8];
     TriangleOut quads[6];
@@ -272,8 +282,8 @@ void objectMain(
     mesh_grid_properties outGrid)
 {
 
-    float vision_cone = dot(normalize(float3(objectIndex * 2) - camera_data.pos.xyz), normalize(camera_data.look.xyz));
-    if(vision_cone > 0.0 || (distance(float3(objectIndex)*2 + float3(1), camera_data.pos.xyz) < 2)) {
+    float vision_cone = dot(normalize(float3(objectIndex * INNER_SIZE) - camera_data.pos.xyz), normalize(camera_data.look.xyz));
+    if(vision_cone > 0.0 || (distance(float3(objectIndex)*INNER_SIZE + float3(1), camera_data.pos.xyz) < 2)) {
         if(voxels_data->chunks[objectIndex.x][objectIndex.y][objectIndex.z] > 0) {
             outPayload.ox = objectIndex.x;
             outPayload.oy = objectIndex.y;
@@ -330,7 +340,7 @@ void meshMain(
         // but since we only know after processing, it's hard (?) to get the correct mesh ID without serializing threads.
         outMesh.set_primitive_count(12);
     }
-    uint3 insidePos = upos * 2 + chunkPos;
+    uint3 insidePos = upos * INNER_SIZE + chunkPos;
 
     if(get_voxel(voxels_data, insidePos) > 0) {
         //uint idx = threadIndex.x + threadIndex.y*2 + threadIndex.z*4;

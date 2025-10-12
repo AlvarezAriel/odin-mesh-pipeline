@@ -8,8 +8,9 @@ CHUNKS_MAX :: 128
 CHUNK_SIZE :: 128
 CONCURRENT_CHUNKS_MAX :: 3000
 
-CHUNK_W :: 128
-CHUNK_H :: 64
+CHUNK_W :: 64
+CHUNK_H :: 32
+INNER_CHUNK :: 4
 
 TAG_EMPTY :: 0
 TAG_FULL :: 1
@@ -18,20 +19,20 @@ TAG_USED :: 2
 
 // TODO: turn this into an Octree with Morton Z-Ordering
 SparseVoxels :: struct #align(16) {
-    chunks: [CHUNK_W][CHUNK_H][CHUNK_W]u8,
+    chunks: [CHUNK_W][CHUNK_H][CHUNK_W]u64,
 }
 
-putVoxel :: proc(sv: ^SparseVoxels, pos: [3]u32, material: u8) -> u8 {
+putVoxel :: proc(sv: ^SparseVoxels, pos: [3]u32, material: u8) -> u64 {
     //log.debug("PUT", pos)
-    chunk:u8 = sv.chunks[pos.x / 2][pos.y / 2][pos.z / 2] | (0b00000001 << u8((pos.x % 2)+(pos.y%2)*2+(pos.z%2)*4))
-    sv.chunks[pos.x / 2][pos.y / 2][pos.z / 2] = chunk
+    chunk:u64 = sv.chunks[pos.x / INNER_CHUNK][pos.y / INNER_CHUNK][pos.z / INNER_CHUNK] | (1 << u64((pos.x % INNER_CHUNK)+(pos.y%INNER_CHUNK)*INNER_CHUNK+(pos.z%INNER_CHUNK)*INNER_CHUNK*INNER_CHUNK))
+    sv.chunks[pos.x / INNER_CHUNK][pos.y / INNER_CHUNK][pos.z / INNER_CHUNK] = chunk
     return chunk
 }
 
-getVoxel :: proc(sv: ^SparseVoxels, pos: [3]u32) -> u8 {
-    tag:u8 = (0b00000001 << u8((pos.x % 2)+(pos.y%2)*2+(pos.z%2)*4))
+getVoxel :: proc(sv: ^SparseVoxels, pos: [3]u32) -> u64 {
+    tag:u64 = (1 << u64((pos.x % INNER_CHUNK)+(pos.y%INNER_CHUNK)*INNER_CHUNK+(pos.z%INNER_CHUNK)*INNER_CHUNK*INNER_CHUNK))
 
-    return sv.chunks[pos.x / 2][pos.y / 2][pos.z / 2] & tag
+    return sv.chunks[pos.x / INNER_CHUNK][pos.y / INNER_CHUNK][pos.z / INNER_CHUNK] & tag
 }
 
 @(test)

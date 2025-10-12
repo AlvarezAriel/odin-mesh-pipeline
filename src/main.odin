@@ -305,7 +305,7 @@ metal_main :: proc() -> (err: ^NS.Error) {
         render_encoder->setMeshBuffer(buffer=engine_buffers.camera_buffer,  offset=0, index=0)
         render_encoder->setMeshBuffer(buffer=engine_buffers.world_buffer,   offset=0, index=1)
 
-        render_encoder->drawMeshThreadgroups(MTL.Size {128,64,128}, MTL.Size { 1,1,1 }, MTL.Size { 1,1,1 })
+        render_encoder->drawMeshThreadgroups(MTL.Size {world.CHUNK_W,world.CHUNK_H,world.CHUNK_W}, MTL.Size { 1,1,1 }, MTL.Size { 1,1,1 })
 
         render_encoder->endEncoding()
 
