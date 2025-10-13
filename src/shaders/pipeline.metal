@@ -239,7 +239,7 @@ uint pushCube(
     outMesh.set_vertex(vidx + 6, vertices[6]);
     outMesh.set_vertex(vidx + 7, vertices[7]);
 
-    float normalStrenght = 0.7;
+    float normalStrenght = 1.0;
 
     float3 sunAngle = normalize(camera_data.sun.xyz);
     if(!has_back_neightbour) {

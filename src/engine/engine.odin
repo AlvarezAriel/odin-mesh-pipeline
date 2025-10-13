@@ -27,6 +27,8 @@ Controls :: struct {
     back: f32,
     up: f32,
     down: f32,
+    sun_z: f32,
+    sun_x: f32,
 }
 
 Camera :: struct #align(16) {
@@ -101,6 +103,9 @@ update :: proc(delta: time.Duration, aspect: f32, buffers: ^EngineBuffers) {
     state.camera.pos = state.player.pos
     state.camera.look = glm.normalize(state.player.look)
 
+    sun_rotation := glm.mat4Rotate({0,1,0}, d*(state.controls.sun_x - state.controls.sun_z))
+    state.camera.sun = glm.normalize(sun_rotation * state.camera.sun)
+
     buffers.camera_buffer->didModifyRange(NS.Range_Make(0, size_of(Camera)))
 
     //---
@@ -132,6 +137,10 @@ input :: proc(event: ^SDL.Event) {
             state.controls.left = value
         case SDL.K_D:     
             state.controls.right = value
+        case SDL.K_Z:     
+            state.controls.sun_z = value
+        case SDL.K_X:     
+            state.controls.sun_x = value
         case SDL.K_LSHIFT:     
             state.controls.down = value
         case SDL.K_SPACE:     
