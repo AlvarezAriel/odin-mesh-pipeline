@@ -10,7 +10,7 @@ using namespace metal;
 
 struct Vertex {
     float4 PositionCS [[position]];
-    float3 VColor;
+    float4 Col;
 };
 
 struct TriangleOut {
@@ -40,7 +40,7 @@ struct Payload {
     uint oz;
 };
 
-using Voxel = metal::mesh<Vertex, TriangleOut, 8, 12, topology::triangle>;
+using Voxel = metal::mesh<Vertex, TriangleOut, 125, 6 * 64, topology::triangle>;
 
 // For now it's a direct access but later on we want to replace this with an Octree acceleration structure
 uint64_t get_voxel(constant Voxels_Data*  voxels_data, uint3 upos) {
@@ -107,14 +107,15 @@ float lightCalc(
 
 uint pushCube(
     Voxel outMesh, 
-    uint3 upos, 
+    uint3 worldPos, 
+    uint3 localPos,
     constant Camera_Data&   camera_data,
-    float w, uint idx, 
+    float w,
     float4 tone,
     constant Voxels_Data* voxels_data
 ) {
     uint triangle_count = 0;
-    float4 pos = float4(float(upos.x), float(upos.y), float(upos.z), 0.0);
+    float4 pos = float4(float(worldPos.x), float(worldPos.y), float(worldPos.z), 0.0);
 
     tone =  lightCalc(pos.xyz + float3(+w,w,+w), camera_data, voxels_data);
     tone +=  lightCalc(pos.xyz + float3(0,0,0), camera_data, voxels_data);
@@ -142,22 +143,21 @@ uint pushCube(
     // tone = min(tone, float4(1.0));
     Vertex vertices[8];
     TriangleOut quads[6];
-    uint vidx = idx * 8;
+    uint idx = localPos.x + localPos.y*4 + localPos.z*16; // 
     uint midx = idx * 18;
     uint pidx = idx * 6;
-
-    uint max_midx = idx * (36/2) + 18;
-    uint max_pidx = idx * 6 + 6;
-
     
+    bool has_left_neightbour = pos.x - w <= camera_data.pos.x  || get_voxel(voxels_data, uint3(worldPos.x-1,worldPos.y,worldPos.z)) > 0;
+    bool has_right_neightbour = camera_data.pos.x <= pos.x + w || get_voxel(voxels_data, uint3(worldPos.x+1,worldPos.y,worldPos.z)) > 0;
+    bool has_top_neightbour = pos.y >= camera_data.pos.y       || get_voxel(voxels_data, uint3(worldPos.x,worldPos.y+1, worldPos.z)) > 0;
+    bool has_back_neightbour = pos.z - w <= camera_data.pos.z  || get_voxel(voxels_data, uint3(worldPos.x,worldPos.y, worldPos.z-1)) > 0;
+    bool has_front_neightbour = camera_data.pos.z <= pos.z + w || get_voxel(voxels_data, uint3(worldPos.x,worldPos.y, worldPos.z+1)) > 0;
+    bool has_bottom_neightbour = pos.y -w < camera_data.pos.y  || get_voxel(voxels_data, uint3(worldPos.x,worldPos.y-1,worldPos.z)) > 0;
 
-    bool has_left_neightbour = pos.x - w <= camera_data.pos.x  || get_voxel(voxels_data, uint3(upos.x-1,upos.y,upos.z)) > 0;
-    bool has_right_neightbour = camera_data.pos.x <= pos.x + w || get_voxel(voxels_data, uint3(upos.x+1,upos.y,upos.z)) > 0;
-    bool has_top_neightbour = pos.y >= camera_data.pos.y       || get_voxel(voxels_data, uint3(upos.x,upos.y+1, upos.z)) > 0;
-    bool has_back_neightbour = pos.z - w <= camera_data.pos.z  || get_voxel(voxels_data, uint3(upos.x,upos.y, upos.z-1)) > 0;
-    bool has_front_neightbour = camera_data.pos.z <= pos.z + w || get_voxel(voxels_data, uint3(upos.x,upos.y, upos.z+1)) > 0;
-    bool has_bottom_neightbour = pos.y -w < camera_data.pos.y  || get_voxel(voxels_data, uint3(upos.x,upos.y-1,upos.z)) > 0;
 
+    // if(has_top_neightbour && has_bottom_neightbour && has_left_neightbour && has_right_neightbour && has_front_neightbour && has_back_neightbour) {
+    //     return 0;
+    // }
     //bool has_back_top_neightbour = get_voxel(voxels_data, uint3(upos.x,upos.y + 1,upos.z - 1)) > 0;
     //bool has_front_top_neightbour = get_voxel(voxels_data, uint3(upos.x,upos.y+1,upos.z+1)) > 0;
     
@@ -171,93 +171,71 @@ uint pushCube(
     vertices[6].PositionCS = camera_data.transform * (pos + float4(+w, -w, w, 1.0));
     vertices[7].PositionCS = camera_data.transform * (pos + float4(+w, w, w, 1.0));
 
-    vertices[0].VColor = float3(1.0);
-    vertices[1].VColor = float3(1.0);
-    vertices[2].VColor = float3(1.0);
-    vertices[3].VColor = float3(1.0);
-    vertices[4].VColor = float3(1.0);
-    vertices[5].VColor = float3(1.0);
-    vertices[6].VColor = float3(1.0);
-    vertices[7].VColor = float3(1.0);
+    vertices[0].Col = float4(1,1,1,1);
+    vertices[1].Col = float4(1,0,0,1);
+    vertices[2].Col = float4(1,0,0,1);
+    vertices[3].Col = float4(1,0,0,1);
+    vertices[4].Col = float4(1,0,0,1);
+    vertices[5].Col = float4(1,0,0,1);
+    vertices[6].Col = float4(0,1,0,1);
+    vertices[7].Col = float4(0,0,1,1);
 
-    float shadow = 0.6;
-    // if(!has_front_neightbour) {
-    //     if(get_voxel(voxels_data, uint3(upos.x,upos.y - 1, upos.z+1)) > 0) {
-    //         vertices[5].VColor = float3(shadow);
-    //         vertices[6].VColor = float3(shadow);
-    //     }
-    // }
+    uint3 exps = uint3(1,5,25);
+    uint3 tmp; // dot product only works with float, otehrwise I would use that. I couldn't find a mulAdd
 
-    // if(!has_right_neightbour) {
-    //     if(get_voxel(voxels_data, uint3(upos.x+1,upos.y - 1, upos.z)) > 0) {
-    //         vertices[2].VColor = float3(shadow);
-    //         vertices[6].VColor = float3(shadow);
-    //     }
-    // }
+    tmp = (localPos + uint3(0,1,0)) * exps;
+    uint vid0 = tmp.x + tmp.y + tmp.z;
 
-    // if(!has_top_neightbour) {
-    //     bool has_top_left = get_voxel(voxels_data, uint3(upos.x-1,upos.y + 1, upos.z)) > 0;
-    //     bool has_top_front = get_voxel(voxels_data, uint3(upos.x,upos.y + 1, upos.z+1)) > 0;
+    tmp = (localPos + uint3(0,0,0)) * exps;
+    uint vid1 = tmp.x + tmp.y + tmp.z;
 
-    //     if(has_top_left) {
-    //         vertices[0].VColor = float3(shadow);
-    //         vertices[4].VColor = float3(shadow);
-    //     }
+    tmp = (localPos + uint3(1,0,0)) * exps;
+    uint vid2 = tmp.x + tmp.y + tmp.z;
 
-    //     if(get_voxel(voxels_data, uint3(upos.x,upos.y + 1, upos.z-1)) > 0) {
-    //         vertices[0].VColor = float3(shadow);
-    //         vertices[3].VColor = float3(shadow);
-    //         // ??
-    //     }
+    tmp = (localPos + uint3(1,1,0)) * exps;
+    uint vid3 = tmp.x + tmp.y + tmp.z;
 
-    //     if(get_voxel(voxels_data, uint3(upos.x-1,upos.y + 1, upos.z-1)) > 0) {
-    //         vertices[0].VColor = float3(shadow*1.2);
-    //     }
+    tmp = (localPos + uint3(0,1,1)) * exps;
+    uint vid4 = tmp.x + tmp.y + tmp.z;
 
-    //     if(get_voxel(voxels_data, uint3(upos.x-1,upos.y + 1, upos.z+1)) > 0) {
-    //         vertices[4].VColor = min(vertices[4].VColor, float3(shadow*1.2));
-    //     }
+    tmp = (localPos + uint3(0,0,1)) * exps;
+    uint vid5 = tmp.x + tmp.y + tmp.z;
 
-    //     if(has_top_front) {
-    //         vertices[4].VColor = float3(shadow);
-    //         vertices[7].VColor = float3(shadow);
-    //     }
+    tmp = (localPos + uint3(1,0,1)) * exps;
+    uint vid6 = tmp.x + tmp.y + tmp.z;
+    
+    tmp = (localPos + uint3(1,1,1)) * exps;
+    uint vid7 = tmp.x + tmp.y + tmp.z;
 
-    //     if(has_top_left && has_top_front) {
-    //         vertices[4].VColor = float3(shadow);
-    //     }
-    // }
+    outMesh.set_vertex(vid0, vertices[0]);
+    outMesh.set_vertex(vid1, vertices[1]);
+    outMesh.set_vertex(vid2, vertices[2]);
+    outMesh.set_vertex(vid3, vertices[3]);
 
-
-    outMesh.set_vertex(vidx + 0, vertices[0]);
-    outMesh.set_vertex(vidx + 1, vertices[1]);
-    outMesh.set_vertex(vidx + 2, vertices[2]);
-    outMesh.set_vertex(vidx + 3, vertices[3]);
-
-    outMesh.set_vertex(vidx + 4, vertices[4]);
-    outMesh.set_vertex(vidx + 5, vertices[5]);
-    outMesh.set_vertex(vidx + 6, vertices[6]);
-    outMesh.set_vertex(vidx + 7, vertices[7]);
+    outMesh.set_vertex(vid4, vertices[4]);
+    outMesh.set_vertex(vid5, vertices[5]);
+    outMesh.set_vertex(vid6, vertices[6]);
+    outMesh.set_vertex(vid7, vertices[7]);
 
     float normalStrenght = 1.0;
-
     float3 sunAngle = normalize(camera_data.sun.xyz);
+
     if(!has_back_neightbour) {
         // Back
         float4 normal = float4(0.0, 0.0, -1.0, 0.0);
         float t = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
         t = mix(normalStrenght, 1.0, t);
 
-        outMesh.set_index(midx++, vidx + 0);
-        outMesh.set_index(midx++, vidx + 1);
-        outMesh.set_index(midx++, vidx + 2);
+        outMesh.set_index(midx++, vid0);
+        outMesh.set_index(midx++, vid1);
+        outMesh.set_index(midx++, vid2);
         quads[pidx].Color = tone.rgb * t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
 
-        outMesh.set_index(midx++, vidx + 0);
-        outMesh.set_index(midx++, vidx + 2);
-        outMesh.set_index(midx++, vidx + 3);
+        outMesh.set_index(midx++, vid0);
+        outMesh.set_index(midx++, vid2);
+        outMesh.set_index(midx++, vid3);
         quads[pidx].Color = tone.rgb * t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
@@ -270,16 +248,16 @@ uint pushCube(
         float t = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
         t = mix(normalStrenght, 1.0, t);
 
-        outMesh.set_index(midx++, vidx + 7);
-        outMesh.set_index(midx++, vidx + 3);
-        outMesh.set_index(midx++, vidx + 2);
+        outMesh.set_index(midx++, vid7);
+        outMesh.set_index(midx++, vid3);
+        outMesh.set_index(midx++, vid2);
         quads[pidx].Color = tone.rgb * t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
 
-        outMesh.set_index(midx++, vidx + 6);
-        outMesh.set_index(midx++, vidx + 7);
-        outMesh.set_index(midx++, vidx + 2);
+        outMesh.set_index(midx++, vid6);
+        outMesh.set_index(midx++, vid7);
+        outMesh.set_index(midx++, vid2);
         quads[pidx].Color = tone.rgb * t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
@@ -292,82 +270,82 @@ uint pushCube(
         float t = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
         t = mix(normalStrenght, 1.0, t);
 
-        outMesh.set_index(midx++, vidx + 5);
-        outMesh.set_index(midx++, vidx + 7);
-        outMesh.set_index(midx++, vidx + 6);
+        outMesh.set_index(midx++, vid5);
+        outMesh.set_index(midx++, vid7);
+        outMesh.set_index(midx++, vid6);
         quads[pidx].Color = tone.rgb * t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
 
-        outMesh.set_index(midx++, vidx + 5);
-        outMesh.set_index(midx++, vidx + 4);
-        outMesh.set_index(midx++, vidx + 7);
+        outMesh.set_index(midx++, vid5);
+        outMesh.set_index(midx++, vid4);
+        outMesh.set_index(midx++, vid7);
         quads[pidx].Color = tone.rgb * t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
         triangle_count += 2;
     }
 
-    if(!has_bottom_neightbour && midx < max_midx) {
+    if(!has_bottom_neightbour && triangle_count < 6) {
         // Bottom
         float4 normal = float4(0.0, -1.0, 0.0, 0.0);
         float t = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
         t = mix(normalStrenght, 1.0, t);
 
-        outMesh.set_index(midx++, vidx + 5);
-        outMesh.set_index(midx++, vidx + 6);
-        outMesh.set_index(midx++, vidx + 2);
+        outMesh.set_index(midx++, vid5);
+        outMesh.set_index(midx++, vid6);
+        outMesh.set_index(midx++, vid2);
         quads[pidx].Color = tone.rgb * t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
 
-        outMesh.set_index(midx++, vidx + 5);
-        outMesh.set_index(midx++, vidx + 2);
-        outMesh.set_index(midx++, vidx + 1);
+        outMesh.set_index(midx++, vid5);
+        outMesh.set_index(midx++, vid2);
+        outMesh.set_index(midx++, vid1);
         quads[pidx].Color = tone.rgb * t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
         triangle_count += 2;
     }
 
-    if(!has_left_neightbour && midx < max_midx) {
+    if(!has_left_neightbour && triangle_count < 6) {
         // Left
         float4 normal = float4(-1.0, 0.0, 0.0, 0.0);
         float t = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
         t = mix(normalStrenght, 1.0, t);
 
-        outMesh.set_index(midx++, vidx + 0);
-        outMesh.set_index(midx++, vidx + 4);
-        outMesh.set_index(midx++, vidx + 1);
+        outMesh.set_index(midx++, vid0);
+        outMesh.set_index(midx++, vid4);
+        outMesh.set_index(midx++, vid1);
         quads[pidx].Color = tone.rgb * t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
 
-        outMesh.set_index(midx++, vidx + 4);
-        outMesh.set_index(midx++, vidx + 5);
-        outMesh.set_index(midx++, vidx + 1);
+        outMesh.set_index(midx++, vid4);
+        outMesh.set_index(midx++, vid5);
+        outMesh.set_index(midx++, vid1);
         quads[pidx].Color = tone.rgb * t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
         triangle_count += 2;
     }
 
-    if(!has_top_neightbour && midx < max_midx) {
+    if(!has_top_neightbour && triangle_count < 6) {
         // Top
         float4 normal = float4(0.0, 1.0, 0.0, 0.0);
         float t = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
         t = mix(normalStrenght, 1.0, t);
 
-        outMesh.set_index(midx++, vidx + 7);
-        outMesh.set_index(midx++, vidx + 0);
-        outMesh.set_index(midx++, vidx + 3);
+        outMesh.set_index(midx++, vid7);
+        outMesh.set_index(midx++, vid0);
+        outMesh.set_index(midx++, vid3);
         quads[pidx].Color = tone.rgb * t;
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
 
-        outMesh.set_index(midx++, vidx + 4);
-        outMesh.set_index(midx++, vidx + 0);
-        outMesh.set_index(midx++, vidx + 7);
+        outMesh.set_index(midx++, vid4);
+        outMesh.set_index(midx++, vid0);
+        outMesh.set_index(midx++, vid7);
         quads[pidx].Color = tone.rgb * t;
         outMesh.set_primitive(pidx, quads[pidx]);
         triangle_count += 2;   
@@ -394,7 +372,7 @@ void objectMain(
             outPayload.oy = objectIndex.y;
             outPayload.oz = objectIndex.z;
             if (gtid == 0) {
-                outGrid.set_threadgroups_per_grid(uint3(INNER_SIZE, INNER_SIZE, INNER_SIZE) );
+                outGrid.set_threadgroups_per_grid(uint3(1,1,1));// TEMP FOR TESTING //uint3(INNER_SIZE, INNER_SIZE, INNER_SIZE) 
             }
         }
     }
@@ -403,8 +381,8 @@ void objectMain(
 uint processVoxel(
     Voxel outMesh, 
     uint3 pos, 
+    uint3 localPos,
     constant Camera_Data&   camera_data,
-    uint idx, 
     constant Voxels_Data* voxels_data
 ) {
     float3 fpos = float3(pos);
@@ -415,7 +393,7 @@ uint processVoxel(
         //idx = 1;
         //uint actualIdx = simd_prefix_exclusive_sum(idx);
         float4 c = float4(float3(0.0), 1.0);
-        primitiveCount += pushCube(outMesh, pos, camera_data, 0.5, idx, c, voxels_data);
+        primitiveCount += pushCube(outMesh, pos, localPos, camera_data, 0.5, c, voxels_data);
     }
 
     return primitiveCount;
@@ -432,28 +410,29 @@ void meshMain(
     uint3 tid                             [[thread_position_in_grid]],
     uint width                            [[threadgroups_per_grid]]
 ) {
-    uint x = payload.ox;
-    uint y = payload.oy;
-    uint z =  payload.oz;
+    // uint x = payload.ox;
+    // uint y = payload.oy;
+    // uint z =  payload.oz;
 
-    uint3 upos = uint3(x,y,z);
+    uint3 globalPos = uint3(payload.ox, payload.oy, payload.oz);
+    uint3 localPos = threadIndex;
     float w = 0.5;
     uint primitiveCount = 0;
 
-    if (threadIndex.x == 0) {
+    uint3 worldPos = globalPos * INNER_SIZE + localPos;
+    if (threadIndex.x == 0 && threadIndex.y == 0 && threadIndex.z == 0) {
         // TODO: this amount can be optimized, since in reality we will always have at most half of this
         // but since we only know after processing, it's hard (?) to get the correct mesh ID without serializing threads.
-        outMesh.set_primitive_count(12);
+        outMesh.set_primitive_count(8 * 64);
     }
-    uint3 insidePos = upos * INNER_SIZE + chunkPos;
 
-    if(get_voxel(voxels_data, insidePos) > 0) {
+    if(get_voxel(voxels_data, worldPos) > 0) {
         //uint idx = threadIndex.x + threadIndex.y*2 + threadIndex.z*4;
         primitiveCount += processVoxel(
-            outMesh, insidePos, camera_data, 0, voxels_data
+            outMesh, worldPos, localPos, camera_data, voxels_data
         );
     }
-    
+
     //uint totalPrimitives = simd_sum(primitiveCount);
 }
 
@@ -470,5 +449,6 @@ float4 fragmentMain(
     // float3 color = mix(0.0, 2.0, input.tri.Color.r);
     // float3 result = mix(0.0, 0.1, input.vtx.PositionCS.w - 0.5); 
     // float3 c2 = mix(float3(0.1, 0.17, 0.35), float3(1.0, 0.71, 0.73), color.r);
-    return float4(input.tri.Color.rgb * input.vtx.VColor.r, 1.0);
+    return float4(input.tri.Color.rgb, 1.0);
+    // return float4(input.vtx.Col.rgb, 1.0);
 }

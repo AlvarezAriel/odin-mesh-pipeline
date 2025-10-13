@@ -77,14 +77,17 @@ build_voxel_buffer :: proc(device: ^MTL.Device) {
         }
     }
 
-    // for x in 0..=1 {
-    //     for y in 0..=1 {
-    //         for z in 0..=1 { 
-    //             if(x == 1 && z == 1 && y ==1 ) { continue }
-    //             engine.fillVoxel({u32(x),u32(y),u32(z)} + {1,1,1}, 1)
+    // size:u32 = 4
+    // for x in 0..<4 {
+    //     for y in 0..<2 {
+    //         for z in 0..<4 { 
+    //             engine.fillVoxel({u32(x),u32(y),0}, 1)
     //         }
     //     }
     // }
+
+    // engine.fillVoxel({6,0,0} + {1,1,1}, 1)
+    // engine.fillVoxel({7,0,0} + {1,1,1}, 1)
 
     // for x in 0..=1 {
     //     for y in 0..=1 {
@@ -95,17 +98,23 @@ build_voxel_buffer :: proc(device: ^MTL.Device) {
     //     }
     // }
 
-    // for x in 0..=1 {
-    //     for y in 0..=1 {
-    //         for z in 0..=1 { 
+    // for x in 0..=3 {
+    //     for y in 0..=3 {
+    //         for z in 0..=3 { 
     //             if(x == 1 && z == 1 && y ==1 ) { continue }
     //             engine.fillVoxel({u32(x),u32(y),u32(z)} + {16,1,1}, 1)
     //         }
     //     }
     // }
 
+    // engine.fillVoxel({0,0,0}, 1)
     // engine.fillVoxel({1,1,1}, 1)
-    // engine.fillVoxel({2,1,1}, 1)
+    // engine.fillVoxel({1,2,1}, 1)
+    // engine.fillVoxel({1,2,2}, 1)
+    // engine.fillVoxel({2,2,2}, 1)
+    // engine.fillVoxel({2,2,3}, 1)
+    // engine.fillVoxel({3,3,3}, 1)
+    // engine.fillVoxel({4,4,4}, 1)
     // engine.fillVoxel({3,1,1}, 1)
     // engine.fillVoxel({4,1,1}, 1)
 
@@ -305,7 +314,7 @@ metal_main :: proc() -> (err: ^NS.Error) {
         render_encoder->setMeshBuffer(buffer=engine_buffers.camera_buffer,  offset=0, index=0)
         render_encoder->setMeshBuffer(buffer=engine_buffers.world_buffer,   offset=0, index=1)
 
-        render_encoder->drawMeshThreadgroups(MTL.Size {world.CHUNK_W,world.CHUNK_H,world.CHUNK_W}, MTL.Size { 1,1,1 }, MTL.Size { 1,1,1 })
+        render_encoder->drawMeshThreadgroups(MTL.Size {world.CHUNK_W,world.CHUNK_H,world.CHUNK_W}, MTL.Size { 1,1,1 }, MTL.Size { 4,4,4 })
 
         render_encoder->endEncoding()
 

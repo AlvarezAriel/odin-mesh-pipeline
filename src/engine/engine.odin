@@ -60,8 +60,8 @@ init :: proc(device: ^MTL.Device, buffers: ^EngineBuffers) {
     buffers.world_buffer = device->newBuffer(size_of(world.SparseVoxels), {.StorageModeManaged})
     state.world = buffers.world_buffer->contentsAsType(world.SparseVoxels)
 
-    state.player.pos  = { 0, 1.0, 4, 0}
-    state.player.look = { 0, 0, -1, 0}
+    state.player.pos  = { 0, 0, 3, 0}
+    state.player.look = { 0, 0,-1, 0}
     state.camera.sun =  {1.13,1.1,-0.5, 0};
 }
 
@@ -85,7 +85,7 @@ update :: proc(delta: time.Duration, aspect: f32, buffers: ^EngineBuffers) {
     
     d := f32(time.duration_seconds(delta))
     state.player.speed.x = state.controls.left - state.controls.right
-    voxes_per_second :f32 = d * 100
+    voxes_per_second :f32 = d * 10
 
     direction := glm.normalize(state.player.look * { 1, 0, 1, 0})
 
@@ -146,6 +146,8 @@ input :: proc(event: ^SDL.Event) {
         case SDL.K_SPACE:     
             state.controls.up = value
     }
+
+    log.debug(state.player.pos, state.player.look)
 }
 
 calcCameraYaw :: proc(event: ^SDL.Event) {
