@@ -23,6 +23,7 @@ References:
  - [Advanced Mesh Shaders | Martin Fuller | DirectX Developer Day](https://www.youtube.com/watch?v=0sJ_g-aWriQ)
  - [Modern Renedering Introduction](https://alelievr.github.io/Modern-Rendering-Introduction/MeshShaders/)
  - https://dubiousconst282.github.io/2024/10/03/voxel-ray-tracing/
+ - [UV-free Texturing using Sparse Voxel DAGs](https://www.cse.chalmers.se/research/group/gfx-web/UV-free%20Texturing%20using%20Sparse%20Voxel%20DAGs.pdf)
 
  
 Other people making voxel engines:

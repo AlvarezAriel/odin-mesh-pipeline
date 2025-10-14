@@ -74,6 +74,16 @@ build_voxel_buffer :: proc(device: ^MTL.Device) {
 
             basePos :[3]u32 = [3]u32 { u32(cube.pos.x), u32(cube.pos.z), u32(cube.pos.y) };
             engine.fillVoxel(basePos, 1)
+            engine.fillVoxel(basePos + { 255, 0, 0 }, 1)
+            engine.fillVoxel(basePos + { 255, 0, 255 }, 1)
+            engine.fillVoxel(basePos + { 0, 0, 255 }, 1)
+
+            engine.fillVoxel(basePos + { 510, 0, 255 }, 1)
+            engine.fillVoxel(basePos + { 255, 0, 510 }, 1)
+
+            engine.fillVoxel(basePos + { 510, 0, 0 }, 1)
+            engine.fillVoxel(basePos + { 510, 0, 510 }, 1)
+            engine.fillVoxel(basePos + { 0, 0, 510 }, 1)
         }
     }
 

@@ -4,11 +4,7 @@ import "core:testing"
 import "core:fmt"
 import "core:log"
 
-CHUNKS_MAX :: 128
-CHUNK_SIZE :: 128
-CONCURRENT_CHUNKS_MAX :: 3000
-
-CHUNK_W :: 64
+CHUNK_W :: 512
 CHUNK_H :: 32
 INNER_CHUNK :: 4
 

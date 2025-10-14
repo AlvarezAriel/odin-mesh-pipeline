@@ -3,14 +3,13 @@ using namespace metal;
 
 #define STACK_SIZE 8
 #define CHUNKS_MAX 64
-#define CHUNK_W 64
+#define CHUNK_W 512
 #define CHUNK_H 32
 #define INNER_SIZE 4
 #define CONCURRENT_CHUNKS_MAX 3000
 
 struct Vertex {
     float4 PositionCS [[position]];
-    float4 Col;
 };
 
 struct TriangleOut {
@@ -170,15 +169,6 @@ uint pushCube(
     vertices[5].PositionCS = camera_data.transform * (pos + float4(-w, -w, w, 1.0));
     vertices[6].PositionCS = camera_data.transform * (pos + float4(+w, -w, w, 1.0));
     vertices[7].PositionCS = camera_data.transform * (pos + float4(+w, w, w, 1.0));
-
-    vertices[0].Col = float4(1,1,1,1);
-    vertices[1].Col = float4(1,0,0,1);
-    vertices[2].Col = float4(1,0,0,1);
-    vertices[3].Col = float4(1,0,0,1);
-    vertices[4].Col = float4(1,0,0,1);
-    vertices[5].Col = float4(1,0,0,1);
-    vertices[6].Col = float4(0,1,0,1);
-    vertices[7].Col = float4(0,0,1,1);
 
     uint3 exps = uint3(1,5,25);
     uint3 tmp; // dot product only works with float, otehrwise I would use that. I couldn't find a mulAdd
@@ -390,8 +380,6 @@ uint processVoxel(
 
     uint primitiveCount = 0;
     if(vision_cone > 0.6) {
-        //idx = 1;
-        //uint actualIdx = simd_prefix_exclusive_sum(idx);
         float4 c = float4(float3(0.0), 1.0);
         primitiveCount += pushCube(outMesh, pos, localPos, camera_data, 0.5, c, voxels_data);
     }
