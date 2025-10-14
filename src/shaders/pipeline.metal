@@ -5,6 +5,7 @@ using namespace metal;
 #define CHUNKS_MAX 64
 #define CHUNK_W 512
 #define CHUNK_H 32
+#define PARTITION_SIZE 8 
 #define INNER_SIZE 4
 #define CONCURRENT_CHUNKS_MAX 3000
 
@@ -30,6 +31,7 @@ struct ChunkHeader {
 };
 
 struct Voxels_Data {
+    uchar partitions[CHUNK_W/PARTITION_SIZE][CHUNK_H/PARTITION_SIZE][CHUNK_W/PARTITION_SIZE];
     uint64_t chunks[CHUNK_W][CHUNK_H][CHUNK_W];
 };
 
@@ -354,16 +356,17 @@ void objectMain(
     object_data Payload& outPayload       [[payload]],
     mesh_grid_properties outGrid)
 {
-
-    float vision_cone = dot(normalize(float3(objectIndex * INNER_SIZE) - camera_data.pos.xyz), normalize(camera_data.look.xyz));
-    if(vision_cone > 0.0 || (distance(float3(objectIndex)*INNER_SIZE + float3(1), camera_data.pos.xyz) < 2)) {
-        if(voxels_data->chunks[objectIndex.x][objectIndex.y][objectIndex.z] > 0) {
-            outPayload.ox = objectIndex.x;
-            outPayload.oy = objectIndex.y;
-            outPayload.oz = objectIndex.z;
-            if (gtid == 0) {
-                outGrid.set_threadgroups_per_grid(uint3(1,1,1));// TEMP FOR TESTING //uint3(INNER_SIZE, INNER_SIZE, INNER_SIZE) 
-            }
+    if(voxels_data->partitions[objectIndex.x][objectIndex.y][objectIndex.z] > 0) {
+        float vision_cone = dot(normalize(float3(objectIndex * INNER_SIZE) - camera_data.pos.xyz), normalize(camera_data.look.xyz));
+        if(vision_cone > 0.0 || (distance(float3(objectIndex)*INNER_SIZE + float3(1), camera_data.pos.xyz) < 2)) {
+            // if(voxels_data->chunks[objectIndex.x][objectIndex.y][objectIndex.z] > 0) {
+                outPayload.ox = objectIndex.x;
+                outPayload.oy = objectIndex.y;
+                outPayload.oz = objectIndex.z;
+                if (gtid == 0) {
+                    outGrid.set_threadgroups_per_grid(uint3(PARTITION_SIZE,PARTITION_SIZE,PARTITION_SIZE));
+                }
+            // }
         }
     }
 }
@@ -393,7 +396,7 @@ void meshMain(
     constant Camera_Data&   camera_data   [[buffer(0)]],
     constant Voxels_Data*   voxels_data   [[buffer(1)]],
     object_data const Payload& payload    [[payload]],
-    uint3 chunkPos                        [[threadgroup_position_in_grid]],
+    uint3 partitionPos                    [[threadgroup_position_in_grid]],
     uint3 threadIndex                     [[thread_position_in_threadgroup]],
     uint3 tid                             [[thread_position_in_grid]],
     uint width                            [[threadgroups_per_grid]]
@@ -402,25 +405,26 @@ void meshMain(
     // uint y = payload.oy;
     // uint z =  payload.oz;
 
-    uint3 globalPos = uint3(payload.ox, payload.oy, payload.oz);
-    uint3 localPos = threadIndex;
-    float w = 0.5;
-    uint primitiveCount = 0;
+    uint3 globalPos = uint3(payload.ox, payload.oy, payload.oz) * PARTITION_SIZE + partitionPos;
+        if(voxels_data->chunks[globalPos.x][globalPos.y][globalPos.z] > 0) {
+        uint3 localPos = threadIndex;
+        float w = 0.5;
+        uint primitiveCount = 0;
 
-    uint3 worldPos = globalPos * INNER_SIZE + localPos;
-    if (threadIndex.x == 0 && threadIndex.y == 0 && threadIndex.z == 0) {
-        // TODO: this amount can be optimized, since in reality we will always have at most half of this
-        // but since we only know after processing, it's hard (?) to get the correct mesh ID without serializing threads.
-        outMesh.set_primitive_count(8 * 64);
+        uint3 worldPos = globalPos * INNER_SIZE + localPos;
+        if (threadIndex.x == 0 && threadIndex.y == 0 && threadIndex.z == 0) {
+            // TODO: this amount can be optimized, since in reality we will always have at most half of this
+            // but since we only know after processing, it's hard (?) to get the correct mesh ID without serializing threads.
+            outMesh.set_primitive_count(8 * 64);
+        }
+
+        if(get_voxel(voxels_data, worldPos) > 0) {
+            //uint idx = threadIndex.x + threadIndex.y*2 + threadIndex.z*4;
+            primitiveCount += processVoxel(
+                outMesh, worldPos, localPos, camera_data, voxels_data
+            );
+        }
     }
-
-    if(get_voxel(voxels_data, worldPos) > 0) {
-        //uint idx = threadIndex.x + threadIndex.y*2 + threadIndex.z*4;
-        primitiveCount += processVoxel(
-            outMesh, worldPos, localPos, camera_data, voxels_data
-        );
-    }
-
     //uint totalPrimitives = simd_sum(primitiveCount);
 }
 

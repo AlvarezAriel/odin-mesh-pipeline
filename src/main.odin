@@ -324,12 +324,13 @@ metal_main :: proc() -> (err: ^NS.Error) {
         render_encoder->setMeshBuffer(buffer=engine_buffers.camera_buffer,  offset=0, index=0)
         render_encoder->setMeshBuffer(buffer=engine_buffers.world_buffer,   offset=0, index=1)
 
-        render_encoder->drawMeshThreadgroups(MTL.Size {world.CHUNK_W,world.CHUNK_H,world.CHUNK_W}, MTL.Size { 1,1,1 }, MTL.Size { 4,4,4 })
+        render_encoder->drawMeshThreadgroups(MTL.Size {world.CHUNK_W/world.PARTITION_SIZE, world.CHUNK_H/world.PARTITION_SIZE, world.CHUNK_W/world.PARTITION_SIZE}, MTL.Size { 1,1,1 }, MTL.Size { 4,4,4 })
 
         render_encoder->endEncoding()
 
         command_buffer->presentDrawable(drawable)
         command_buffer->commit()
+        command_buffer->waitUntilCompleted()
     }
 
     return nil
