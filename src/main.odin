@@ -11,7 +11,6 @@ import "core:log"
 import "core:mem"
 import "core:os"
 import "core:time"
-import "vox"
 
 import glm "core:math/linalg/glsl"
 import "engine"
@@ -64,91 +63,6 @@ build_depth_stencil :: proc(device: ^MTL.Device) -> (dso: ^MTL.DepthStencilState
 
     return
 }
-
-build_voxel_buffer :: proc(device: ^MTL.Device) {
-    if v, ok := vox.load_from_file("./assets/scene_2.vox", context.temp_allocator); ok {
-        scene := v.models[0]
-        log.debug("loading models", len(v.models))
-        for cube in scene.voxels {
-            if(cube.pos.y >= 255 || cube.pos.y >= 255 || cube.pos.z >= 64) { continue } 
-
-            basePos :[3]u32 = [3]u32 { u32(cube.pos.x), u32(cube.pos.z), u32(cube.pos.y) };
-            engine.fillVoxel(basePos, 1)
-            engine.fillVoxel(basePos + { 255, 0, 0 }, 1)
-            engine.fillVoxel(basePos + { 255, 0, 255 }, 1)
-            engine.fillVoxel(basePos + { 0, 0, 255 }, 1)
-
-            engine.fillVoxel(basePos + { 510, 0, 255 }, 1)
-            engine.fillVoxel(basePos + { 255, 0, 510 }, 1)
-
-            engine.fillVoxel(basePos + { 510, 0, 0 }, 1)
-            engine.fillVoxel(basePos + { 510, 0, 510 }, 1)
-            engine.fillVoxel(basePos + { 0, 0, 510 }, 1)
-        }
-    }
-
-    // size:u32 = 4
-    // for x in 0..<4 {
-    //     for y in 0..<2 {
-    //         for z in 0..<4 { 
-    //             engine.fillVoxel({u32(x),u32(y),0}, 1)
-    //         }
-    //     }
-    // }
-
-    // engine.fillVoxel({6,0,0} + {1,1,1}, 1)
-    // engine.fillVoxel({7,0,0} + {1,1,1}, 1)
-
-    // for x in 0..=1 {
-    //     for y in 0..=1 {
-    //         for z in 0..=1 { 
-    //             if(x == 1 && z == 1 && y ==1 ) { continue }
-    //             engine.fillVoxel({u32(x),u32(y),u32(z)} + {3,1,1}, 1)
-    //         }
-    //     }
-    // }
-
-    // for x in 0..=3 {
-    //     for y in 0..=3 {
-    //         for z in 0..=3 { 
-    //             if(x == 1 && z == 1 && y ==1 ) { continue }
-    //             engine.fillVoxel({u32(x),u32(y),u32(z)} + {16,1,1}, 1)
-    //         }
-    //     }
-    // }
-
-    // engine.fillVoxel({0,0,0}, 1)
-    // engine.fillVoxel({1,1,1}, 1)
-    // engine.fillVoxel({1,2,1}, 1)
-    // engine.fillVoxel({1,2,2}, 1)
-    // engine.fillVoxel({2,2,2}, 1)
-    // engine.fillVoxel({2,2,3}, 1)
-    // engine.fillVoxel({3,3,3}, 1)
-    // engine.fillVoxel({4,4,4}, 1)
-    // engine.fillVoxel({3,1,1}, 1)
-    // engine.fillVoxel({4,1,1}, 1)
-
-
-    log.debug("Total Chunks loaded:", engine.getTotalChunks())
-    
-
-    // engine.fillVoxel({1,1,1}, 1)
-    
-    // for x in  0..<1024 {
-    //     for z in  0..<512 {
-    //         engine.fillVoxel({u8(x),0,u8(z)}, 1)
-    //     }
-    // }
-    // engine.fillVoxel({15,2,0}, 1)
-    // engine.fillVoxel({31,2,0}, 1)
-    // engine.fillVoxel({31,3,0}, 1)
-    // engine.fillVoxel({47,2,0}, 1)
-    // engine.notifyWorldUpdate(&engine_buffers)
-    
-	return
-}
-
-
 
 metal_main :: proc() -> (err: ^NS.Error) {
     cl := log.create_console_logger()
@@ -215,7 +129,6 @@ metal_main :: proc() -> (err: ^NS.Error) {
     defer engine.release(&engine_buffers)
 
     log.debug("Initializing world")
-    build_voxel_buffer(device)
 
     command_queue := device->newCommandQueue()
     defer command_queue->release()
@@ -324,7 +237,13 @@ metal_main :: proc() -> (err: ^NS.Error) {
         render_encoder->setMeshBuffer(buffer=engine_buffers.camera_buffer,  offset=0, index=0)
         render_encoder->setMeshBuffer(buffer=engine_buffers.world_buffer,   offset=0, index=1)
 
-        render_encoder->drawMeshThreadgroups(MTL.Size {world.CHUNK_W/world.PARTITION_SIZE, world.CHUNK_H/world.PARTITION_SIZE, world.CHUNK_W/world.PARTITION_SIZE}, MTL.Size { 1,1,1 }, MTL.Size { 4,4,4 })
+        render_encoder->setFragmentBuffer(buffer=engine_buffers.camera_buffer,  offset=0, index=0)
+
+        render_encoder->drawMeshThreadgroups(
+            MTL.Size { world.CHUNK_W/world.PARTITION_SIZE, world.CHUNK_H/world.PARTITION_SIZE, world.CHUNK_W/world.PARTITION_SIZE}, 
+            MTL.Size { world.PARTITION_SIZE,world.PARTITION_SIZE,world.PARTITION_SIZE }, 
+            MTL.Size { world.INNER_CHUNK,world.INNER_CHUNK,world.INNER_CHUNK }
+        )
 
         render_encoder->endEncoding()
 

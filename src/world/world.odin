@@ -3,10 +3,12 @@ package world
 import "core:testing"
 import "core:fmt"
 import "core:log"
+import "core:math/noise"
+import "../vox"
 
-CHUNK_W :: 512
-CHUNK_H :: 32
-PARTITION_SIZE :: 8 
+CHUNK_W :: 256
+CHUNK_H :: 64
+PARTITION_SIZE :: 2
 INNER_CHUNK :: 4
 
 TAG_EMPTY :: 0
@@ -36,6 +38,35 @@ getVoxel :: proc(sv: ^SparseVoxels, pos: [3]u32) -> u64 {
     tag:u64 = (1 << u64((pos.x % INNER_CHUNK)+(pos.y%INNER_CHUNK)*INNER_CHUNK+(pos.z%INNER_CHUNK)*INNER_CHUNK*INNER_CHUNK))
 
     return sv.chunks[pos.x / INNER_CHUNK][pos.y / INNER_CHUNK][pos.z / INNER_CHUNK] & tag
+}
+
+getTotalChunks :: proc() -> u16 {
+    return 0
+}
+
+generate_world :: proc(sv: ^SparseVoxels) {
+
+    for x:f64 = 0; x < 1024; x += 1 {
+        for z:f64 = 0; z < 1024; z += 1 {
+            res := noise.noise_2d(34502783, {x / 512,z / 512})
+            // putVoxel(sv, { u32(x), u32(64*res), u32(z) }, 1)
+            putVoxel(sv, { u32(x), u32(64*(0.75 + res)), u32(z) }, 1)
+        }
+    }
+
+    load_model(sv, {100,0,512})
+}
+
+load_model :: proc(sv: ^SparseVoxels, offset:[3]u32) {
+    if v, ok := vox.load_from_file("./assets/tower.vox", context.temp_allocator); ok {
+        scene := v.models[0]
+        for cube in scene.voxels {
+            if(cube.pos.y >= 255 || cube.pos.y >= 255 ) { continue } 
+
+            basePos :[3]u32 = [3]u32 { u32(cube.pos.x), u32(cube.pos.z), u32(cube.pos.y) } + offset;
+            putVoxel(sv, basePos, 1)
+        }
+    }
 }
 
 @(test)

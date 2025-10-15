@@ -21,6 +21,7 @@ Player :: struct {
 }
 
 Controls :: struct {
+    enabled: bool,
     left: f32,
     right: f32,
     forward: f32,
@@ -63,14 +64,10 @@ init :: proc(device: ^MTL.Device, buffers: ^EngineBuffers) {
     state.player.pos  = { 0, 0, 3, 0}
     state.player.look = { 0, 0,-1, 0}
     state.camera.sun =  {1.13,1.1,-0.5, 0};
-}
 
-fillVoxel :: proc(pos: [3]u32, material: u8) {
-    world.putVoxel(state.world, pos, material)
-}
+    state.controls.enabled = true
 
-getTotalChunks :: proc() -> u16 {
-    return 0
+    world.generate_world(state.world)
 }
 
 notifyWorldUpdate :: proc(buffers: ^EngineBuffers) {
@@ -117,7 +114,19 @@ side_look_dir :: proc() -> (side_direction: glm.vec4){
 }
 
 input :: proc(event: ^SDL.Event) {
+
+
+    if event.type == SDL.EventType.MOUSE_BUTTON_DOWN { 
+        state.controls.enabled = true
+    }
+
+    if !state.controls.enabled {
+        return
+    }
+    
     calcCameraYaw(event)
+
+
     // TODO: use scancodes instead
     value: f32 = 0
     if event.type == SDL.EventType.KEY_DOWN {
@@ -127,6 +136,8 @@ input :: proc(event: ^SDL.Event) {
     } else {
         return
     }
+
+
     
     switch event.key.key {
         case SDL.K_W:
@@ -145,6 +156,8 @@ input :: proc(event: ^SDL.Event) {
             state.controls.down = value
         case SDL.K_SPACE:     
             state.controls.up = value
+        case SDL.K_ESCAPE:
+            state.controls.enabled = false 
     }
 
     log.debug(state.player.pos, state.player.look)
