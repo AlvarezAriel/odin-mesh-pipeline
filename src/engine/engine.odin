@@ -181,7 +181,7 @@ input :: proc(event: ^SDL.Event) {
             state.controls.enabled = false 
     }
 
-    log.debug(state.player.pos, state.player.look)
+    log.debug(state.player.pos, state.player.look, state.camera.sun)
 }
 
 calcCameraYaw :: proc(event: ^SDL.Event) {

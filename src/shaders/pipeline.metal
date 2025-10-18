@@ -638,7 +638,6 @@ uint64_t get_voxel_device(device Voxels_Data*  voxels_data, uint3 upos) {
 
 void bakeLightRay(device Voxels_Data* voxels_data, device Light_Data* light_data, uint3 from, float3 dir, uint count)
 {
-
     int3 f = int3(from);
     float m = max3(abs(dir.x), abs(dir.y), abs(dir.z));
     float st = 1.0 / m;
@@ -659,18 +658,18 @@ void bakeLightRay(device Voxels_Data* voxels_data, device Light_Data* light_data
             break;
         }
 
-        light_data->chunks[next.x][next.y][next.z] = 0.0;
+        light_data->chunks[next.x][next.y][next.z] = half(0.0);
         //putVoxel(voxels_data, next);
     }
 
     if(should_set_shadow) {
         for(; i < count; i++) {
             uint3 next = uint3(f - int3(trunc(step * i)));
-            if(next.x > maxW || next.y > maxY || next.z > maxW) {
+            if(next.x > maxW || next.y > maxY || next.z > maxW || next.x <= 0 || next.z <= 0 || next.y <= 0) {
                 break;
             }
 
-            light_data->chunks[next.x][next.y][next.z] = 1.0;
+            light_data->chunks[next.x][next.y][next.z] = half(1.0);
             //putVoxel(voxels_data, next);
         }
     }
