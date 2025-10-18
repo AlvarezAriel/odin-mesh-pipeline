@@ -21,45 +21,33 @@ SHADER_SOURCE :: #load("./shaders/pipeline.metal", string)
 engine_buffers: engine.EngineBuffers
 pixel_density: f32
 
-build_shaders :: proc(device: ^MTL.Device) -> (library: ^MTL.Library, pso: ^MTL.RenderPipelineState, cmp: ^MTL.ComputePipelineState, err: ^NS.Error) {
-    // SHADRE SOURCE LIBRARY
+
+build_shaders :: proc(device: ^MTL.Device) -> (library: ^MTL.Library, pso: ^MTL.RenderPipelineState, err: ^NS.Error) {
     shader_src_str := NS.String.alloc()->initWithOdinString(SHADER_SOURCE)
     defer shader_src_str->release()
 
     library = device->newLibraryWithSource(shader_src_str, nil) or_return
 
-    // COMPUTE PASS
-    {
-        compute_function   := library->newFunctionWithName(NS.AT("compute"))
-        defer compute_function->release()
+    object_function   := library->newFunctionWithName(NS.AT("objectMain"))
+    defer object_function->release()
 
-        cmp = device->newComputePipelineStateWithFunction(compute_function) or_return
+    mesh_function   := library->newFunctionWithName(NS.AT("meshMain"))
+    defer mesh_function->release()
 
-    }
+    fragment_function := library->newFunctionWithName(NS.AT("fragmentMain"))
+    defer fragment_function->release()
 
-    // MESH RENDER PASS
-    {
-        object_function   := library->newFunctionWithName(NS.AT("objectMain"))
-        defer object_function->release()
-    
-        mesh_function   := library->newFunctionWithName(NS.AT("meshMain"))
-        defer mesh_function->release()
-    
-        fragment_function := library->newFunctionWithName(NS.AT("fragmentMain"))
-        defer fragment_function->release()
-    
-        desc := MTL.MeshRenderPipelineDescriptor.alloc()->init()
-        defer desc->release()
-    
-        desc->setObjectFunction(object_function)
-        desc->setMeshFunction(mesh_function)
-        desc->setFragmentFunction(fragment_function)
-        desc->colorAttachments()->object(0)->setPixelFormat(.BGRA8Unorm_sRGB)
-        desc->setDepthAttachmentPixelFormat(global_config.depth_format)
-        desc->setRasterSampleCount(NS.UInteger(global_config.raster_sample_count))
-    
-        pso = device->newRenderPipelineStateWithMeshDescriptor(desc, nil, nil) or_return
-    }
+    desc := MTL.MeshRenderPipelineDescriptor.alloc()->init()
+    defer desc->release()
+
+    desc->setObjectFunction(object_function)
+    desc->setMeshFunction(mesh_function)
+    desc->setFragmentFunction(fragment_function)
+    desc->colorAttachments()->object(0)->setPixelFormat(.BGRA8Unorm_sRGB)
+    desc->setDepthAttachmentPixelFormat(global_config.depth_format)
+    desc->setRasterSampleCount(NS.UInteger(global_config.raster_sample_count))
+
+    pso = device->newRenderPipelineStateWithMeshDescriptor(desc, nil, nil) or_return
 
     return
 }
@@ -129,10 +117,9 @@ metal_main :: proc() -> (err: ^NS.Error) {
     native_window->setBackgroundColor(nil)
 
     log.debug("Building shaders")
-    library, pso, cmp := build_shaders(device) or_return
+    library, pso := build_shaders(device) or_return
     defer library->release()
     defer pso->release()
-    defer cmp->release()
 
     dso := build_depth_stencil(device) or_return
     defer dso->release()
@@ -217,25 +204,6 @@ metal_main :: proc() -> (err: ^NS.Error) {
         assert(drawable != nil)
         defer drawable->release()
 
-        command_buffer := command_queue->commandBuffer()
-        defer command_buffer->release()
-
-        // Compute Pass
-        if(true){
-            compute_encoder := command_buffer->computeCommandEncoder()
-            defer compute_encoder->release()
-
-            compute_encoder->setComputePipelineState(cmp)
-    
-            compute_encoder->setBuffer(buffer=engine_buffers.camera_buffer,  offset=0, index=0)
-            compute_encoder->setBuffer(buffer=engine_buffers.world_buffer,   offset=0, index=1)
-            compute_encoder->setBuffer(buffer=engine_buffers.light_buffer,   offset=0, index=2)
-    
-            compute_encoder->dispatchThreadgroups({ 1, 1, 1}, { 1,1,1})
-            compute_encoder->endEncoding()
-        }
-        //----
-
         pass := MTL.RenderPassDescriptor.renderPassDescriptor()
         defer pass->release()
 
@@ -252,6 +220,9 @@ metal_main :: proc() -> (err: ^NS.Error) {
 		depth_attachment->setLoadAction(.Clear)
 		depth_attachment->setStoreAction(.Store)
 
+        command_buffer := command_queue->commandBuffer()
+        defer command_buffer->release()
+
         render_encoder := command_buffer->renderCommandEncoderWithDescriptor(pass)
         defer render_encoder->release()
 
@@ -262,9 +233,9 @@ metal_main :: proc() -> (err: ^NS.Error) {
         render_encoder->setObjectBuffer(buffer=engine_buffers.camera_buffer,  offset=0, index=0)
         render_encoder->setObjectBuffer(buffer=engine_buffers.world_buffer,   offset=0, index=1)
 
+
         render_encoder->setMeshBuffer(buffer=engine_buffers.camera_buffer,  offset=0, index=0)
         render_encoder->setMeshBuffer(buffer=engine_buffers.world_buffer,   offset=0, index=1)
-        render_encoder->setMeshBuffer(buffer=engine_buffers.light_buffer,   offset=0, index=2)
 
         render_encoder->setFragmentBuffer(buffer=engine_buffers.camera_buffer,  offset=0, index=0)
 

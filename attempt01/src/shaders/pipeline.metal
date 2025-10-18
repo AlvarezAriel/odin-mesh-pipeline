@@ -1,8 +1,8 @@
 #include <metal_stdlib>
 using namespace metal;
 
-#define CHUNK_W 128
-#define CHUNK_H 32
+#define CHUNK_W 256
+#define CHUNK_H 64
 #define PARTITION_SIZE 2
 #define INNER_SIZE 4
 
@@ -19,7 +19,6 @@ struct Camera_Data {
     float4 pos;
     float4 look;
     float4 sun;
-    uint step;
 };
 
 struct ChunkHeader {
@@ -31,10 +30,6 @@ struct ChunkHeader {
 struct Voxels_Data {
     uchar partitions[CHUNK_W/PARTITION_SIZE][CHUNK_H/PARTITION_SIZE][CHUNK_W/PARTITION_SIZE];
     uint64_t chunks[CHUNK_W][CHUNK_H][CHUNK_W];
-};
-
-struct Light_Data {
-    half chunks[CHUNK_W*INNER_SIZE][CHUNK_H*INNER_SIZE][CHUNK_W*INNER_SIZE];
 };
 
 struct Payload {
@@ -98,7 +93,7 @@ float lightCalc(
                 break;
             }
         }
-    }
+    }  
 
     for(float i = lodStep/INNER_SIZE; i < maxSteps; i += 1.05) {
         ray = uint3(startingBlock + sun * i);
@@ -126,8 +121,7 @@ uint pushCube(
     constant Camera_Data&   camera_data,
     float w,
     float4 tone,
-    constant Voxels_Data* voxels_data,
-    constant Light_Data*     light_data
+    constant Voxels_Data* voxels_data
 ) {
     uint triangle_count = 0;
     float4 pos = float4(float(worldPos.x), float(worldPos.y), float(worldPos.z), 0.0);
@@ -161,12 +155,12 @@ uint pushCube(
     uint midx = idx * 18;
     uint pidx = idx * 6;
     
-    bool has_left_neightbour = pos.x - w <= camera_data.pos.x  || get_voxel(voxels_data, uint3(worldPos.x-1,worldPos.y,worldPos.z)) > 0;
-    bool has_right_neightbour = camera_data.pos.x <= pos.x + w || get_voxel(voxels_data, uint3(worldPos.x+1,worldPos.y,worldPos.z)) > 0;
-    bool has_top_neightbour = pos.y >= camera_data.pos.y       || get_voxel(voxels_data, uint3(worldPos.x,worldPos.y+1, worldPos.z)) > 0;
-    bool has_back_neightbour = pos.z - w <= camera_data.pos.z  || get_voxel(voxels_data, uint3(worldPos.x,worldPos.y, worldPos.z-1)) > 0;
-    bool has_front_neightbour = camera_data.pos.z <= pos.z + w || get_voxel(voxels_data, uint3(worldPos.x,worldPos.y, worldPos.z+1)) > 0;
-    bool has_bottom_neightbour = pos.y -w < camera_data.pos.y  || get_voxel(voxels_data, uint3(worldPos.x,worldPos.y-1,worldPos.z)) > 0;
+    bool has_left_neightbour = get_voxel(voxels_data, uint3(worldPos.x-1,worldPos.y,worldPos.z)) > 0;
+    bool has_right_neightbour = get_voxel(voxels_data, uint3(worldPos.x+1,worldPos.y,worldPos.z)) > 0;
+    bool has_top_neightbour = get_voxel(voxels_data, uint3(worldPos.x,worldPos.y+1, worldPos.z)) > 0;
+    bool has_back_neightbour = get_voxel(voxels_data, uint3(worldPos.x,worldPos.y, worldPos.z-1)) > 0;
+    bool has_front_neightbour = get_voxel(voxels_data, uint3(worldPos.x,worldPos.y, worldPos.z+1)) > 0;
+    bool has_bottom_neightbour = get_voxel(voxels_data, uint3(worldPos.x,worldPos.y-1,worldPos.z)) > 0;
 
 
     // if(has_top_neightbour && has_bottom_neightbour && has_left_neightbour && has_right_neightbour && has_front_neightbour && has_back_neightbour) {
@@ -177,36 +171,44 @@ uint pushCube(
     
     // if(false) {
     float count = 0;
-    // if(has_left_neightbour) {
-    //     tone += lightCalc(pos.xyz + float3(-1,+w,0), camera_data, voxels_data);
+    if(has_left_neightbour) {
+        tone += lightCalc(pos.xyz + float3(-1,+w,0), camera_data, voxels_data);
+        count += 1;
+    }
+    if(has_right_neightbour) {
+        tone += lightCalc(pos.xyz + float3(1,+w,0), camera_data, voxels_data);
+        count += 1;
+    }
+    if(has_top_neightbour) {
+        tone += lightCalc(pos.xyz + float3(0,1+w,0), camera_data, voxels_data);
+        count += 1;
+    }
+    if(has_back_neightbour) {
+        tone += lightCalc(pos.xyz + float3(0,0+w,-1), camera_data, voxels_data);
+        count += 1;
+    }
+    if(has_front_neightbour) {
+        tone += lightCalc(pos.xyz + float3(0,0+w,1), camera_data, voxels_data);
+        count += 1;
+    }
+    // if(has_bottom_neightbour) {
+    //     tone += lightCalc(pos.xyz + float3(0,-1,0), camera_data, voxels_data);
     //     count += 1;
     // }
-    // if(has_right_neightbour) {
-    //     tone += lightCalc(pos.xyz + float3(1,+w,0), camera_data, voxels_data);
-    //     count += 1;
+    tone = tone / count;
+    tone = min(tone, float4(1.0));
+    // } else {
+    //     tone =  lightCalc(pos.xyz, camera_data, voxels_data);
     // }
-    // if(has_top_neightbour) {
-    //     tone += lightCalc(pos.xyz + float3(0,1+w,0), camera_data, voxels_data);
-    //     count += 1;
-    // }
-    // if(has_back_neightbour) {
-    //     tone += lightCalc(pos.xyz + float3(0,0+w,-1), camera_data, voxels_data);
-    //     count += 1;
-    // }
-    // if(has_front_neightbour) {
-    //     tone += lightCalc(pos.xyz + float3(0,0+w,1), camera_data, voxels_data);
-    //     count += 1;
-    // }
-    // // if(has_bottom_neightbour) {
-    // //     tone += lightCalc(pos.xyz + float3(0,-1,0), camera_data, voxels_data);
-    // //     count += 1;
-    // // }
-    // tone = tone / count;
-    // tone = min(tone, float4(1.0));
-    // // } else {
-    // //     tone =  lightCalc(pos.xyz, camera_data, voxels_data);
-    // // }
-    // tone = mix(0.01, 1.0, tone);
+    tone = mix(0.01, 1.0, tone);
+
+     has_left_neightbour = has_left_neightbour || pos.x - w <= camera_data.pos.x;
+     has_right_neightbour = has_right_neightbour || camera_data.pos.x <= pos.x + w ;
+     has_top_neightbour = has_top_neightbour || pos.y >= camera_data.pos.y;
+     has_back_neightbour = has_back_neightbour || pos.z - w <= camera_data.pos.z;
+     has_front_neightbour = has_front_neightbour || camera_data.pos.z <= pos.z + w;
+     has_bottom_neightbour = has_bottom_neightbour || pos.y -w < camera_data.pos.y ;
+
 
 
     vertices[0].PositionCS = camera_data.transform * (pos + float4(-w, w, -w, 1.0));
@@ -324,7 +326,7 @@ uint pushCube(
         triangle_count += 2;
     }
 
-    if(!has_bottom_neightbour) {
+    if(!has_bottom_neightbour && triangle_count < 6) {
         // Bottom
         float4 normal = float4(0.0, -1.0, 0.0, 0.0);
         float t = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
@@ -346,7 +348,7 @@ uint pushCube(
         triangle_count += 2;
     }
 
-    if(!has_left_neightbour) {
+    if(!has_left_neightbour && triangle_count < 6) {
         // Left
         float4 normal = float4(-1.0, 0.0, 0.0, 0.0);
         float t = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
@@ -368,7 +370,7 @@ uint pushCube(
         triangle_count += 2;
     }
 
-    if(!has_top_neightbour) {
+    if(!has_top_neightbour && triangle_count < 6) {
         // Top
         float4 normal = float4(0.0, 1.0, 0.0, 0.0);
         float t = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
@@ -428,14 +430,51 @@ void objectMain(
     }
 }
 
+bool canBeSeen(
+    constant Camera_Data&   camera_data,
+    constant Voxels_Data*   voxels_data,
+    uint3 pos
+) {
+    float3 starting = float3(pos);
+    float3 lookToCamera = camera_data.pos.xyz - starting.xyz;
+    float totalDistance = distance(starting, float3(camera_data.pos.xyz));
+    bool is_visible = true;
+    uint voxelsPerPartition = INNER_SIZE * PARTITION_SIZE;
+    uint3 partitionPos = pos / voxelsPerPartition;
+    for(float rayStep = 1.5; totalDistance - rayStep > PARTITION_SIZE; rayStep += 1.0) {
+        float3 dir = starting + lookToCamera * rayStep;
+        uint3 ray = uint3(dir);
+        uint3 currentPartition = ray.x/voxelsPerPartition;
+
+        if(currentPartition.x != partitionPos.x && currentPartition.y != partitionPos.y && currentPartition.z != partitionPos.z) {
+            partitionPos = currentPartition;
+            if(voxels_data->partitions[currentPartition.x][currentPartition.y][currentPartition.z] <= 0) {
+                rayStep += PARTITION_SIZE * INNER_SIZE;
+                continue;
+            }
+        }
+
+        uint64_t chunk = voxels_data->chunks[ray.x/INNER_SIZE][ray.y/INNER_SIZE][ray.z/INNER_SIZE];
+        if(chunk <= 0) {
+            rayStep += INNER_SIZE;
+            continue;
+        }
+
+        uint64_t voxel = get_voxel_from_chunk(voxels_data, pos, chunk);
+
+        if(voxel > 0) {
+            return false;
+        }
+    }
+    return true;
+}
 
 uint processVoxel(
     Voxel outMesh, 
     uint3 pos, 
     uint3 localPos,
     constant Camera_Data&   camera_data,
-    constant Voxels_Data* voxels_data,
-    constant Light_Data*     light_data
+    constant Voxels_Data* voxels_data
 ) {
     float3 fpos = float3(pos);
     float vision_cone = dot(normalize(fpos - camera_data.pos.xyz), normalize(camera_data.look.xyz));
@@ -443,7 +482,9 @@ uint processVoxel(
     uint primitiveCount = 0;
     if(vision_cone > 0.6) {
         float4 c = float4(float3(0.0), 1.0);
-        primitiveCount += pushCube(outMesh, pos, localPos, camera_data, 0.5, c, voxels_data, light_data);
+        //if(canBeSeen(camera_data, voxels_data, pos)){
+            primitiveCount += pushCube(outMesh, pos, localPos, camera_data, 0.5, c, voxels_data);
+        //}
     }
 
     return primitiveCount;
@@ -454,7 +495,6 @@ void meshMain(
     Voxel outMesh,
     constant Camera_Data&   camera_data   [[buffer(0)]],
     constant Voxels_Data*   voxels_data   [[buffer(1)]],
-    constant Light_Data*     light_data   [[buffer(2)]],
     object_data const Payload& payload    [[payload]],
     uint partitionPosIndex                [[threadgroup_position_in_grid]],
     uint3 threadIndex                     [[thread_position_in_threadgroup]],
@@ -480,7 +520,7 @@ void meshMain(
     if(get_voxel(voxels_data, worldPos) > 0) {
         //uint idx = threadIndex.x + threadIndex.y*2 + threadIndex.z*4;
         primitiveCount += processVoxel(
-            outMesh, worldPos, localPos, camera_data, voxels_data, light_data
+            outMesh, worldPos, localPos, camera_data, voxels_data
         );
     }
     //uint totalPrimitives = simd_sum(primitiveCount);
@@ -497,56 +537,5 @@ float4 fragmentMain(
     FSInput input [[stage_in]]
 ) {
     return float4(mix(input.tri.Color.rgb, float3(0.46, 0.32, 0.31), input.tri.Color.w), 1.0);
-    //return float4(float3(input.tri.Color.w), 1.0);
-}
-
-half get_light(
-    constant Voxels_Data*  voxels_data,
-    device Light_Data*     light_data,
-    float3 dir,
-    uint3 origin
-) {
-    
-}
-
-void putVoxel(device Voxels_Data* sv, uint3 pos) {
-    uint64_t chunk = sv->chunks[pos.x / INNER_SIZE][pos.y / INNER_SIZE][pos.z / INNER_SIZE] | (1 << uint64_t((pos.x % INNER_SIZE)+(pos.y%INNER_SIZE)*INNER_SIZE+(pos.z%INNER_SIZE)*INNER_SIZE*INNER_SIZE));
-    sv->chunks[pos.x / INNER_SIZE][pos.y / INNER_SIZE][pos.z / INNER_SIZE] = chunk;
-
-    uint partitionContentSize = INNER_SIZE * PARTITION_SIZE;
-    uint3 partitionPos = pos / partitionContentSize;
-    sv->partitions[partitionPos.x][partitionPos.y][partitionPos.z] = 1;
-}
-
-
-void simple3Dline(device Voxels_Data* voxels_data, uint3 from, float3 dir, uint count)
-{
-
-    int3 f = int3(from);
-    float m = max3(dir.x, dir.y, dir.z);
-    float st = 1.0 / m;
-    float3 step = dir * st;
-
-    for(uint i=1; i < count; i++) {
-        uint3 next = uint3(f + int3(trunc(step * i)));
-        putVoxel(voxels_data, next);
-    }
-}
-
-
-kernel void compute(
-    constant Camera_Data&  camera_data   [[buffer(0)]],
-    device Voxels_Data*    voxels_data [[buffer(1)]],
-    device Light_Data*     light_data    [[buffer(2)]],
-    uint global [[threadgroup_position_in_grid]],
-    uint local [[thread_position_in_threadgroup]]
-) {
-    // if (simd_is_first()) {
-    //     // light_data->chunks[200][100][200] = ushort2(1,1);
-    //     // light_data->chunks[4][3][4] = ushort2(1,1);
-    //     light_data->chunks[1][1][1] = 1.0;
-    // }
-
-    //plotLine3d(voxels_data, int3(0,0,0), int3(8,8,8));
-    simple3Dline(voxels_data, uint3(128,0,128), camera_data.sun.xyz, 64);
+    // return float4(float3(input.vtx.PositionCS.w), 1.0);
 }

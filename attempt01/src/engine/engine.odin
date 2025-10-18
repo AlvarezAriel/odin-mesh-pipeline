@@ -37,7 +37,6 @@ Camera :: struct #align(16) {
     pos: glm.vec4,
     look: glm.vec4,
     sun: glm.vec4,
-    light_step: u32,
 }
 
 
@@ -51,11 +50,6 @@ EngineState :: struct {
 EngineBuffers :: struct {
     camera_buffer: ^MTL.Buffer,
     world_buffer: ^MTL.Buffer,
-    light_buffer: ^MTL.Buffer,
-}
-
-InternalLightTransport :: struct #align(16) {
-    chunks: [world.CHUNK_W*world.INNER_CHUNK][world.CHUNK_H*world.INNER_CHUNK][world.CHUNK_W*world.INNER_CHUNK]f16,
 }
 
 state: EngineState
@@ -64,16 +58,13 @@ init :: proc(device: ^MTL.Device, buffers: ^EngineBuffers) {
     buffers.camera_buffer = device->newBuffer(size_of(Camera), {.StorageModeManaged})
     state.camera = buffers.camera_buffer->contentsAsType(Camera)
 
-    buffers.light_buffer = device->newBuffer(size_of(InternalLightTransport), MTL.ResourceOptions{.StorageModePrivate})
-
     buffers.world_buffer = device->newBuffer(size_of(world.SparseVoxels), {.StorageModeManaged})
     state.world = buffers.world_buffer->contentsAsType(world.SparseVoxels)
 
-    state.player.pos  = { 89.790596, 45.36161, 167.089, 0}
-    state.player.look = { 0.77406108, -0.5243018, -0.35487598, 0}
+    state.player.pos  = { 0, 0, 3, 0}
+    state.player.look = { 0, 0,-1, 0}
     state.camera.sun =  {1.13,1.1,-0.5, 0};
 
-    state.camera.light_step = 0
     state.controls.enabled = true
 
     world.generate_world(state.world)
@@ -111,12 +102,6 @@ update :: proc(delta: time.Duration, aspect: f32, buffers: ^EngineBuffers) {
 
     sun_rotation := glm.mat4Rotate({0,1,0}, d*(state.controls.sun_x - state.controls.sun_z))
     state.camera.sun = glm.normalize(sun_rotation * state.camera.sun)
-
-    if(state.camera.light_step + 1 >= world.CHUNK_W) {
-        state.camera.light_step = 0
-    } else {
-        state.camera.light_step += 1
-    }
 
     buffers.camera_buffer->didModifyRange(NS.Range_Make(0, size_of(Camera)))
 
@@ -191,7 +176,6 @@ calcCameraYaw :: proc(event: ^SDL.Event) {
 release :: proc(buffers: ^EngineBuffers) {
     buffers.camera_buffer->release()
     buffers.world_buffer->release()
-    buffers.light_buffer->release()
     // if(state.world != nil) {
     //     delete(state.world.chunks)
     // }
