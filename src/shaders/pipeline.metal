@@ -119,6 +119,67 @@ float lightCalc(
     return light;
 }
 
+float countConeLight(constant Voxels_Data* voxels_data, constant Light_Data* light_data, uint3 from, float3 dir, uint count)
+{
+
+    int3 f = int3(from);
+    float m = max3(abs(dir.x), abs(dir.y), abs(dir.z));
+    float st = 1.0 / m;
+    float3 step = dir * st;
+    uint maxY =  CHUNK_H*INNER_SIZE;
+    uint maxW =  CHUNK_W*INNER_SIZE;
+    bool should_set_shadow = false;
+
+    uint i = 0;
+    float lightCount = 0;
+    for(; i < count; i++) {
+        uint3 next = uint3(f + int3(trunc(step * i)));
+        if(get_voxel(voxels_data, next) > 0) {
+            break;
+        }
+        lightCount +=  1.0 - light_data->chunks[next.x][next.y][next.z];
+    }
+
+    return lightCount ;
+}
+
+float topLightCone(constant Voxels_Data* voxels_data, constant Light_Data* light_data, uint3 from) {
+    float rayCount = 1;
+    float lightAcc = 0;
+
+    // lightAcc += 1-light_data->chunks[from.x][from.y+1][from.z];
+    
+    // lightAcc += 1-light_data->chunks[from.x+1][from.y+2][from.z+1]; rayCount++;
+    // lightAcc += 1-light_data->chunks[from.x+1][from.y+2][from.z-1]; rayCount++;
+    // lightAcc += 1-light_data->chunks[from.x-1][from.y+2][from.z+1]; rayCount++;
+    // lightAcc += 1-light_data->chunks[from.x-1][from.y+2][from.z-1]; rayCount++;
+
+    // lightAcc += 1-light_data->chunks[from.x-1][from.y+3][from.z+2]; rayCount++;
+    // lightAcc += 1-light_data->chunks[from.x-2][from.y+3][from.z+1]; rayCount++;
+    // lightAcc += 1-light_data->chunks[from.x-2][from.y+3][from.z-1]; rayCount++;
+    // lightAcc += 1-light_data->chunks[from.x-1][from.y+3][from.z-2]; rayCount++;
+
+    // lightAcc += 1-light_data->chunks[from.x+1][from.y+3][from.z+2]; rayCount++;
+    // lightAcc += 1-light_data->chunks[from.x+2][from.y+3][from.z+1]; rayCount++;
+    // lightAcc += 1-light_data->chunks[from.x+2][from.y+3][from.z-1]; rayCount++;
+    // lightAcc += 1-light_data->chunks[from.x+1][from.y+3][from.z-2]; rayCount++;
+    uint steps = 4;
+    uint amp = 3;
+
+    float weighted = 1.0 / (float(steps)*(4 + 2));
+    uint3 starting = from + uint3(0,1,0);
+    
+    lightAcc += light_data->chunks[starting.x][starting.y][starting.z] * weighted * 2;
+
+    lightAcc += countConeLight(voxels_data, light_data, starting, normalize(float3(-amp, steps,  0)), steps) * weighted;
+    lightAcc += countConeLight(voxels_data, light_data, starting, normalize(float3( amp, steps,  0)), steps) * weighted;
+    lightAcc += countConeLight(voxels_data, light_data, starting, normalize(float3(0, steps, -amp)), steps) * weighted;
+    lightAcc += countConeLight(voxels_data, light_data, starting, normalize(float3( 0, steps, -amp)), steps) * weighted;
+
+    return lightAcc;
+}
+
+
 uint pushCube(
     Voxel outMesh, 
     uint3 worldPos, 
@@ -133,7 +194,7 @@ uint pushCube(
     float4 pos = float4(float(worldPos.x), float(worldPos.y), float(worldPos.z), 0.0);
 
     float dist = distance(camera_data.pos.xyz, pos.xyz);
-    float normalizedDist = min(dist, 1024.0) / 1024.0;
+    float normalizedDist = min(dist, 512.0) / 512.0;
 
     // bool has_left_neightbour = get_voxel(voxels_data, uint3(worldPos.x-1,worldPos.y,worldPos.z)) > 0;
     // bool has_right_neightbour = get_voxel(voxels_data, uint3(worldPos.x+1,worldPos.y,worldPos.z)) > 0;
@@ -374,6 +435,9 @@ uint pushCube(
         float t = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
         t = mix(normalStrenght, 1.0, t);
 
+        float l = topLightCone(voxels_data, light_data, worldPos.xyz);
+        tone.xyz = float3(l);
+
         outMesh.set_index(midx++, vid7);
         outMesh.set_index(midx++, vid0);
         outMesh.set_index(midx++, vid3);
@@ -500,15 +564,6 @@ float4 fragmentMain(
     //return float4(float3(input.tri.Color.w), 1.0);
 }
 
-half get_light(
-    constant Voxels_Data*  voxels_data,
-    device Light_Data*     light_data,
-    float3 dir,
-    uint3 origin
-) {
-    
-}
-
 void putVoxel(device Voxels_Data* sv, uint3 pos) {
     uint64_t chunk = sv->chunks[pos.x / INNER_SIZE][pos.y / INNER_SIZE][pos.z / INNER_SIZE] | (1 << uint64_t((pos.x % INNER_SIZE)+(pos.y%INNER_SIZE)*INNER_SIZE+(pos.z%INNER_SIZE)*INNER_SIZE*INNER_SIZE));
     sv->chunks[pos.x / INNER_SIZE][pos.y / INNER_SIZE][pos.z / INNER_SIZE] = chunk;
@@ -518,18 +573,69 @@ void putVoxel(device Voxels_Data* sv, uint3 pos) {
     sv->partitions[partitionPos.x][partitionPos.y][partitionPos.z] = 1;
 }
 
+// void bakeLightRay(device Voxels_Data* voxels_data, uint3 from, float3 dir, uint count)
+// {
 
-void simple3Dline(device Voxels_Data* voxels_data, uint3 from, float3 dir, uint count)
+//     int3 f = int3(from);
+//     float m = max3(dir.x, dir.y, dir.z);
+//     float st = 1.0 / m;
+//     float3 step = dir * st;
+
+//     for(uint i=1; i < count; i++) {
+//         uint3 next = uint3(f + int3(trunc(step * i)));
+//         putVoxel(voxels_data, next);
+//     }
+// }
+
+uint64_t get_voxel_from_chunk_device(device Voxels_Data*  voxels_data, uint3 upos, uint64_t chunk) {
+    uint64_t tag = uint64_t(1) << uint64_t((upos.x % INNER_SIZE) + (upos.y % INNER_SIZE)*INNER_SIZE + (upos.z % INNER_SIZE)*INNER_SIZE*INNER_SIZE);
+    return tag & chunk;
+}
+// For now it's a direct access but later on we want to replace this with an Octree acceleration structure
+uint64_t get_voxel_device(device Voxels_Data*  voxels_data, uint3 upos) {
+    // The swapped palces between z and y is on purpose
+    uint64_t chunk = voxels_data->chunks[upos.x/INNER_SIZE][upos.y/INNER_SIZE][upos.z/INNER_SIZE];
+    return get_voxel_from_chunk_device(voxels_data, upos, chunk);
+}
+
+
+void bakeLightRay(device Voxels_Data* voxels_data, device Light_Data* light_data, uint3 from, float3 dir, uint count)
 {
 
     int3 f = int3(from);
-    float m = max3(dir.x, dir.y, dir.z);
+    float m = max3(abs(dir.x), abs(dir.y), abs(dir.z));
     float st = 1.0 / m;
     float3 step = dir * st;
+    uint maxY =  CHUNK_H*INNER_SIZE;
+    uint maxW =  CHUNK_W*INNER_SIZE;
+    bool should_set_shadow = false;
 
-    for(uint i=1; i < count; i++) {
-        uint3 next = uint3(f + int3(trunc(step * i)));
-        putVoxel(voxels_data, next);
+    uint i = 1;
+    for(; i < count; i++) {
+        uint3 next = uint3(f - int3(trunc(step * i)));
+        if(next.x >= maxW || next.y >= maxY || next.z >= maxW) {
+            break;
+        }
+
+        if(get_voxel_device(voxels_data, next) > 0) {
+            should_set_shadow = true;
+            break;
+        }
+
+        light_data->chunks[next.x][next.y][next.z] = 0.0;
+        //putVoxel(voxels_data, next);
+    }
+
+    if(should_set_shadow) {
+        for(; i < count; i++) {
+            uint3 next = uint3(f - int3(trunc(step * i)));
+            if(next.x > maxW || next.y > maxY || next.z > maxW) {
+                break;
+            }
+
+            light_data->chunks[next.x][next.y][next.z] = 1.0;
+            //putVoxel(voxels_data, next);
+        }
     }
 }
 
@@ -538,15 +644,13 @@ kernel void compute(
     constant Camera_Data&  camera_data   [[buffer(0)]],
     device Voxels_Data*    voxels_data [[buffer(1)]],
     device Light_Data*     light_data    [[buffer(2)]],
-    uint global [[threadgroup_position_in_grid]],
-    uint local [[thread_position_in_threadgroup]]
+    uint2 global [[threadgroup_position_in_grid]],
+    uint2 local [[thread_position_in_threadgroup]]
 ) {
-    // if (simd_is_first()) {
-    //     // light_data->chunks[200][100][200] = ushort2(1,1);
-    //     // light_data->chunks[4][3][4] = ushort2(1,1);
-    //     light_data->chunks[1][1][1] = 1.0;
-    // }
-
-    //plotLine3d(voxels_data, int3(0,0,0), int3(8,8,8));
-    simple3Dline(voxels_data, uint3(128,0,128), camera_data.sun.xyz, 64);
+    for(uint x = 0; x < 32*INNER_SIZE;x++) {
+        for(uint z = 0; z < 32*INNER_SIZE;z++) {
+            uint3 pos = uint3(x + global.x * 32*INNER_SIZE, CHUNK_H*INNER_SIZE - 1, z + global.y * 32*INNER_SIZE);
+            bakeLightRay(voxels_data, light_data, pos, camera_data.sun.xyz, CHUNK_H*INNER_SIZE + 12);
+        }
+    }
 }

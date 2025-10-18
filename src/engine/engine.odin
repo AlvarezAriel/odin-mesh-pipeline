@@ -49,6 +49,7 @@ EngineState :: struct {
 }
 
 EngineBuffers :: struct {
+    should_compute: bool,
     camera_buffer: ^MTL.Buffer,
     world_buffer: ^MTL.Buffer,
     light_buffer: ^MTL.Buffer,
@@ -65,6 +66,7 @@ init :: proc(device: ^MTL.Device, buffers: ^EngineBuffers) {
     state.camera = buffers.camera_buffer->contentsAsType(Camera)
 
     buffers.light_buffer = device->newBuffer(size_of(InternalLightTransport), MTL.ResourceOptions{.StorageModePrivate})
+    buffers.should_compute = true;
 
     buffers.world_buffer = device->newBuffer(size_of(world.SparseVoxels), {.StorageModeManaged})
     state.world = buffers.world_buffer->contentsAsType(world.SparseVoxels)
@@ -108,6 +110,10 @@ update :: proc(delta: time.Duration, aspect: f32, buffers: ^EngineBuffers) {
     state.camera.transform = proj * view
     state.camera.pos = state.player.pos
     state.camera.look = glm.normalize(state.player.look)
+
+    if(state.controls.sun_x != 0 || state.controls.sun_z != 0) {
+        buffers.should_compute = true;
+    }
 
     sun_rotation := glm.mat4Rotate({0,1,0}, d*(state.controls.sun_x - state.controls.sun_z))
     state.camera.sun = glm.normalize(sun_rotation * state.camera.sun)

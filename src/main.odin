@@ -76,6 +76,8 @@ build_depth_stencil :: proc(device: ^MTL.Device) -> (dso: ^MTL.DepthStencilState
     return
 }
 
+shouldCompute: bool = true
+
 metal_main :: proc() -> (err: ^NS.Error) {
     cl := log.create_console_logger()
 	context.logger = cl
@@ -221,7 +223,8 @@ metal_main :: proc() -> (err: ^NS.Error) {
         defer command_buffer->release()
 
         // Compute Pass
-        if(true){
+        if(engine_buffers.should_compute){
+            engine_buffers.should_compute = false;
             compute_encoder := command_buffer->computeCommandEncoder()
             defer compute_encoder->release()
 
@@ -231,7 +234,7 @@ metal_main :: proc() -> (err: ^NS.Error) {
             compute_encoder->setBuffer(buffer=engine_buffers.world_buffer,   offset=0, index=1)
             compute_encoder->setBuffer(buffer=engine_buffers.light_buffer,   offset=0, index=2)
     
-            compute_encoder->dispatchThreadgroups({ 1, 1, 1}, { 1,1,1})
+            compute_encoder->dispatchThreadgroups({ 4,4,1}, { 1,1,1 })
             compute_encoder->endEncoding()
         }
         //----
