@@ -234,7 +234,7 @@ metal_main :: proc() -> (err: ^NS.Error) {
             compute_encoder->setBuffer(buffer=engine_buffers.world_buffer,   offset=0, index=1)
             compute_encoder->setBuffer(buffer=engine_buffers.light_buffer,   offset=0, index=2)
     
-            compute_encoder->dispatchThreadgroups({ 4,4,1}, { 1,1,1 })
+            compute_encoder->dispatchThreadgroups({ 8,8,1}, { 1,1,1 })
             compute_encoder->endEncoding()
         }
         //----

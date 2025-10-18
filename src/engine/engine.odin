@@ -71,9 +71,9 @@ init :: proc(device: ^MTL.Device, buffers: ^EngineBuffers) {
     buffers.world_buffer = device->newBuffer(size_of(world.SparseVoxels), {.StorageModeManaged})
     state.world = buffers.world_buffer->contentsAsType(world.SparseVoxels)
 
-    state.player.pos  = { 89.790596, 45.36161, 167.089, 0}
-    state.player.look = { 0.77406108, -0.5243018, -0.35487598, 0}
-    state.camera.sun =  {1.13,1.1,-0.5, 0};
+    state.player.pos  = { 255.84962, 138.37822, 396.55328, 0}
+    state.player.look = { -0.18924446, -0.35738355, 0.91458386, 0}
+    state.camera.sun =  {0.17285791, 0.5965225, 0.78376079, 0};
 
     state.camera.light_step = 0
     state.controls.enabled = true

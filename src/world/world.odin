@@ -6,8 +6,8 @@ import "core:log"
 import "core:math/noise"
 import "../vox"
 
-CHUNK_W :: 128
-CHUNK_H :: 32
+CHUNK_W :: 256
+CHUNK_H :: 64
 PARTITION_SIZE :: 2
 INNER_CHUNK :: 4
 
@@ -46,49 +46,49 @@ getTotalChunks :: proc() -> u16 {
 
 generate_world :: proc(sv: ^SparseVoxels) {
 
-    // for x:f64 = 0; x < CHUNK_W*INNER_CHUNK; x += 1 {
-    //     for z:f64 = 0; z < CHUNK_W*INNER_CHUNK; z += 1 {
-    //         //res := noise.noise_2d(34502783, {x / 512,z / 512})
-    //         // putVoxel(sv, { u32(x), u32(64*res), u32(z) }, 1)
-    //         //putVoxel(sv, { u32(x), u32(32*(0.75 + res)), u32(z) }, 1)
-    //         putVoxel(sv, { u32(x), 0, u32(z) }, 1)
-    //     }
-    // }
     for x:f64 = 0; x < CHUNK_W*INNER_CHUNK; x += 1 {
         for z:f64 = 0; z < CHUNK_W*INNER_CHUNK; z += 1 {
             res := noise.noise_2d(34502783, {x / 512,z / 512})
-            // putVoxel(sv, { u32(x), u32(64*res), u32(z) }, 1)
-            putVoxel(sv, { u32(x), u32(0.1*CHUNK_H*(0.75 + res)), u32(z) }, 1)
+            putVoxel(sv, { u32(x), u32(64*res), u32(z) }, 1)
+            //putVoxel(sv, { u32(x), u32(32*(0.75 + res)), u32(z) }, 1)
+            //putVoxel(sv, { u32(x), 0, u32(z) }, 1)
         }
     }
+    // for x:f64 = 0; x < CHUNK_W*INNER_CHUNK; x += 1 {
+    //     for z:f64 = 0; z < CHUNK_W*INNER_CHUNK; z += 1 {
+    //         res := noise.noise_2d(34502783, {x / 512,z / 512})
+    //         // putVoxel(sv, { u32(x), u32(64*res), u32(z) }, 1)
+    //         putVoxel(sv, { u32(x), u32(0.1*CHUNK_H*(0.75 + res)), u32(z) }, 1)
+    //     }
+    // }
 
-    d:u32 = 128
-    for y:u32 = 0; y < 32; y +=1 {
-        putVoxel(sv, {d,y,d}, 1)
-        putVoxel(sv, {d,y,d+1}, 1)
-        putVoxel(sv, {d,y,d+2}, 1)
-        putVoxel(sv, {d,y,d+3}, 1)
-        putVoxel(sv, {d,y,d+4}, 1)
-    }
+    // d:u32 = 128
+    // for y:u32 = 0; y < 32; y +=1 {
+    //     putVoxel(sv, {d,y,d}, 1)
+    //     putVoxel(sv, {d,y,d+1}, 1)
+    //     putVoxel(sv, {d,y,d+2}, 1)
+    //     putVoxel(sv, {d,y,d+3}, 1)
+    //     putVoxel(sv, {d,y,d+4}, 1)
+    // }
 
-    d = 150
-    for y:u32 = 0; y < 32; y +=1 {
-        putVoxel(sv, {d,y,d}, 1)
-        putVoxel(sv, {d+1,y,d}, 1)
-        putVoxel(sv, {d+2,y,d}, 1)
-        putVoxel(sv, {d+3,y,d}, 1)
-        putVoxel(sv, {d+4,y,d}, 1)
-    }
+    // d = 150
+    // for y:u32 = 0; y < 32; y +=1 {
+    //     putVoxel(sv, {d,y,d}, 1)
+    //     putVoxel(sv, {d+1,y,d}, 1)
+    //     putVoxel(sv, {d+2,y,d}, 1)
+    //     putVoxel(sv, {d+3,y,d}, 1)
+    //     putVoxel(sv, {d+4,y,d}, 1)
+    // }
 
-    // load_model(sv, {100,0,512})
-    // load_model_2(sv, {450,0,100})
+    load_model(sv, {100,0,512})
+    load_model_2(sv, {450,0,100})
 }
 
 load_model :: proc(sv: ^SparseVoxels, offset:[3]u32) {
     if v, ok := vox.load_from_file("./assets/tower.vox", context.temp_allocator); ok {
         scene := v.models[0]
         for cube in scene.voxels {
-            if(cube.pos.y >= CHUNK_H*INNER_CHUNK) { continue } 
+            // if(cube.pos.y >= CHUNK_H*INNER_CHUNK) { continue } 
 
             basePos :[3]u32 = [3]u32 { u32(cube.pos.x), u32(cube.pos.z), u32(cube.pos.y) } + offset;
             putVoxel(sv, basePos, 1)
