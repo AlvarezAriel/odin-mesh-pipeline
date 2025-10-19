@@ -19,6 +19,7 @@ struct Camera_Data {
     float4x4 transform;
     float4 pos;
     float4 look;
+    float4 target;
     float4 sun;
     uint step;
 };
@@ -144,22 +145,22 @@ float countConeLight(constant Voxels_Data* voxels_data, constant Light_Data* lig
     return lightCount ;
 }
 
-float topLightCone(constant Voxels_Data* voxels_data, constant Light_Data* light_data, uint3 from) {
+float topLightCone(constant Voxels_Data* voxels_data, constant Light_Data* light_data, uint3 from, float side) {
     float rayCount = 1;
     float lightAcc = 0;
     uint steps = 6;
     uint amp = 2;
 
     float weighted = 1.0 / (float(steps)*(5 + 2));
-    uint3 starting = from + uint3(0,1,0);
+    uint3 starting = uint3(int3(from) + int3(0, side,0));
     
     lightAcc += light_data->chunks[starting.x][starting.y][starting.z] * weighted * 2;
 
-    lightAcc += countConeLight(voxels_data, light_data, starting, normalize(float3(0, 1,  0)), steps) * weighted;
-    lightAcc += countConeLight(voxels_data, light_data, starting, normalize(float3(-amp, 1,  0)), steps) * weighted;
-    lightAcc += countConeLight(voxels_data, light_data, starting, normalize(float3( amp, 1,  0)), steps) * weighted;
-    lightAcc += countConeLight(voxels_data, light_data, starting, normalize(float3(0, 1, -amp)), steps) * weighted;
-    lightAcc += countConeLight(voxels_data, light_data, starting, normalize(float3( 0, 1, -amp)), steps) * weighted;
+    lightAcc += countConeLight(voxels_data, light_data, starting, normalize(float3(0, side,  0)), steps) * weighted;
+    lightAcc += countConeLight(voxels_data, light_data, starting, normalize(float3(-amp, side,  0)), steps) * weighted;
+    lightAcc += countConeLight(voxels_data, light_data, starting, normalize(float3( amp, side,  0)), steps) * weighted;
+    lightAcc += countConeLight(voxels_data, light_data, starting, normalize(float3(0, side, -amp)), steps) * weighted;
+    lightAcc += countConeLight(voxels_data, light_data, starting, normalize(float3( 0, side, -amp)), steps) * weighted;
 
     return lightAcc;
 }
@@ -345,6 +346,11 @@ uint pushCube(
     float normalStrenght = 0.8;
     float3 sunAngle = normalize(camera_data.sun.xyz);
 
+    float3 baseColor = float3(0.8);
+    if(distance(pos.xyz, camera_data.target.xyz) < 4.0) {
+        baseColor = float3(1.0, 0.3, 0.25);
+    }
+
     if(!has_back_neightbour) {
         // Back
         float4 normal = float4(0.0, 0.0, -1.0, 0.0);
@@ -352,7 +358,7 @@ uint pushCube(
         t = mix(normalStrenght, 1.0, t);
 
         float l = frontalLightCone(voxels_data, light_data, worldPos.xyz, -1);
-        tone.xyz = float3(l);
+        tone.xyz = baseColor * l;
 
         outMesh.set_index(midx++, vid0);
         outMesh.set_index(midx++, vid1);
@@ -377,7 +383,7 @@ uint pushCube(
         t = mix(normalStrenght, 1.0, t);
 
         float l = lateralLightCone(voxels_data, light_data, worldPos.xyz, 1);
-        tone.xyz = float3(l);
+        tone.xyz = baseColor * l;
 
         outMesh.set_index(midx++, vid7);
         outMesh.set_index(midx++, vid3);
@@ -402,7 +408,7 @@ uint pushCube(
         t = mix(normalStrenght, 1.0, t);
 
         float l = frontalLightCone(voxels_data, light_data, worldPos.xyz, 1);
-        tone.xyz = float3(l);
+        tone.xyz = baseColor * l;
 
         outMesh.set_index(midx++, vid5);
         outMesh.set_index(midx++, vid7);
@@ -425,6 +431,9 @@ uint pushCube(
         float4 normal = float4(0.0, -1.0, 0.0, 0.0);
         float t = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
         t = mix(normalStrenght, 1.0, t);
+
+        float l = topLightCone(voxels_data, light_data, worldPos.xyz, -1);
+        tone.xyz = baseColor * l;
 
         outMesh.set_index(midx++, vid5);
         outMesh.set_index(midx++, vid6);
@@ -449,7 +458,7 @@ uint pushCube(
         t = mix(normalStrenght, 1.0, t);
 
         float l = lateralLightCone(voxels_data, light_data, worldPos.xyz, -1);
-        tone.xyz = float3(l);
+        tone.xyz = baseColor * l;
 
         outMesh.set_index(midx++, vid0);
         outMesh.set_index(midx++, vid4);
@@ -473,8 +482,8 @@ uint pushCube(
         float t = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
         t = mix(normalStrenght, 1.0, t);
 
-        float l = topLightCone(voxels_data, light_data, worldPos.xyz);
-        tone.xyz = float3(l);
+        float l = topLightCone(voxels_data, light_data, worldPos.xyz, 1);
+        tone.xyz = baseColor * l;
 
         outMesh.set_index(midx++, vid7);
         outMesh.set_index(midx++, vid0);
@@ -685,9 +694,10 @@ kernel void compute(
     uint2 local [[thread_position_in_threadgroup]]
 ) {
     uint parts = CHUNK_W / 8;
+    uint temporalSteps = 8;
     for(uint x = 0; x < parts*INNER_SIZE;x++) {
-        for(uint z = 0; z < parts*INNER_SIZE;z++) {
-            uint3 pos = uint3(x + global.x * parts*INNER_SIZE, CHUNK_H*INNER_SIZE - 1, z + global.y * parts*INNER_SIZE);
+        for(uint z = 0; z < INNER_SIZE;z++) {
+            uint3 pos = uint3(x + global.x * parts*INNER_SIZE, CHUNK_H*INNER_SIZE - 1, z + global.y*INNER_SIZE + camera_data.step*INNER_SIZE*temporalSteps);
             bakeLightRay(voxels_data, light_data, pos, camera_data.sun.xyz, CHUNK_H*INNER_SIZE*2);
         }
     }

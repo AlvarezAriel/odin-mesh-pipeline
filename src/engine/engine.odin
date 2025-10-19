@@ -36,6 +36,7 @@ Camera :: struct #align(16) {
 	transform:  glm.mat4,
     pos: glm.vec4,
     look: glm.vec4,
+    target: glm.vec4,
     sun: glm.vec4,
     light_step: u32,
 }
@@ -46,6 +47,7 @@ EngineState :: struct {
     controls: Controls,
     camera: ^Camera,
     world: ^world.SparseVoxels,
+    should_update_world: bool, // TODO: use actual regions instead of updating the whole thing
 }
 
 EngineBuffers :: struct {
@@ -67,6 +69,7 @@ init :: proc(device: ^MTL.Device, buffers: ^EngineBuffers) {
 
     buffers.light_buffer = device->newBuffer(size_of(InternalLightTransport), MTL.ResourceOptions{.StorageModePrivate})
     buffers.should_compute = true;
+    state.camera.light_step = 0
 
     buffers.world_buffer = device->newBuffer(size_of(world.SparseVoxels), {.StorageModeManaged})
     state.world = buffers.world_buffer->contentsAsType(world.SparseVoxels)
@@ -75,7 +78,7 @@ init :: proc(device: ^MTL.Device, buffers: ^EngineBuffers) {
     state.player.look = { -0.18924446, -0.35738355, 0.91458386, 0}
     state.camera.sun =  {0.17285791, 0.5965225, 0.78376079, 0};
 
-    state.camera.light_step = 0
+    
     state.controls.enabled = true
 
     world.generate_world(state.world)
@@ -112,21 +115,38 @@ update :: proc(delta: time.Duration, aspect: f32, buffers: ^EngineBuffers) {
     state.camera.look = glm.normalize(state.player.look)
 
     if(state.controls.sun_x != 0 || state.controls.sun_z != 0) {
-        buffers.should_compute = true;
+        buffers.should_compute = true
     }
 
     sun_rotation := glm.mat4Rotate({0,1,0}, d*(state.controls.sun_x - state.controls.sun_z))
     state.camera.sun = glm.normalize(sun_rotation * state.camera.sun)
 
-    if(state.camera.light_step + 1 >= world.CHUNK_W) {
+    if(state.camera.light_step + 1 >= world.CHUNK_W / 8) {
         state.camera.light_step = 0
+        buffers.should_compute = false
     } else {
         state.camera.light_step += 1
     }
 
-    buffers.camera_buffer->didModifyRange(NS.Range_Make(0, size_of(Camera)))
 
-    //---
+    collision, ok := castRayCollision().?
+    if(ok) {
+        state.camera.target = {f32(collision.x), f32(collision.y), f32(collision.z), 0}
+    }
+
+    if state.should_update_world {
+        state.should_update_world = false
+        if(ok) {
+            state.camera.light_step = collision.z / (world.INNER_CHUNK * 8)
+        } else {
+            state.camera.light_step = 0
+        }
+        notifyWorldUpdate(buffers)
+        buffers.should_compute = true
+        
+    }
+
+    buffers.camera_buffer->didModifyRange(NS.Range_Make(0, size_of(Camera)))
 }
 
 side_look_dir :: proc() -> (side_direction: glm.vec4){
@@ -134,11 +154,24 @@ side_look_dir :: proc() -> (side_direction: glm.vec4){
     return 
 }
 
+edit_world :: proc() {
+    collision, ok := castRayCollision().?
+    log.debug("ADD BLOCK: ", collision)
+    if(ok) {
+        world.putSphere(state.world, collision, 4)
+        state.should_update_world = true
+    }
+}
+
 input :: proc(event: ^SDL.Event) {
 
 
     if event.type == SDL.EventType.MOUSE_BUTTON_DOWN { 
-        state.controls.enabled = true
+        if(state.controls.enabled == false) {
+            state.controls.enabled = true
+        } else {
+            edit_world()
+        }
     }
 
     if !state.controls.enabled {
@@ -157,8 +190,6 @@ input :: proc(event: ^SDL.Event) {
     } else {
         return
     }
-
-
     
     switch event.key.key {
         case SDL.K_W:
@@ -182,6 +213,37 @@ input :: proc(event: ^SDL.Event) {
     }
 
     log.debug(state.player.pos, state.player.look, state.camera.sun)
+}
+
+castRayCollision :: proc() -> Maybe([3]u32) {
+    from := state.camera.pos.xyz
+    dir  := state.camera.look.xyz
+    f := [3]int { int(from.x), int(from.y), int(from.z) }
+    m := math.max(math.abs(dir.x), math.max(math.abs(dir.y), math.abs(dir.z)))
+    st := 1.0 / m
+    step := dir * st
+    maxY: u32 =  world.CHUNK_H*world.INNER_CHUNK
+    maxW: u32 =  world.CHUNK_W*world.INNER_CHUNK
+    should_set_shadow := false
+
+    i: f32 = 1
+    next: [3]u32
+    prev: [3]u32
+    for ; i < world.CHUNK_W*world.INNER_CHUNK; i += 1 {
+        s := step * i
+        floatnext := f + [3]int {int(math.trunc(s.x)),int(math.trunc(s.y)),int(math.trunc(s.z))}
+        prev = next
+        next = [3]u32 { u32(floatnext.x), u32(floatnext.y), u32(floatnext.z)}
+        if(next.x >= maxW || next.y >= maxY || next.z >= maxW) {
+            break
+        }
+
+        if(world.getVoxel(state.world, next) > 0) {
+            return prev
+        }
+    }
+
+    return nil
 }
 
 calcCameraYaw :: proc(event: ^SDL.Event) {

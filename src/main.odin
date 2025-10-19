@@ -224,7 +224,6 @@ metal_main :: proc() -> (err: ^NS.Error) {
 
         // Compute Pass
         if(engine_buffers.should_compute){
-            engine_buffers.should_compute = false;
             compute_encoder := command_buffer->computeCommandEncoder()
             defer compute_encoder->release()
 

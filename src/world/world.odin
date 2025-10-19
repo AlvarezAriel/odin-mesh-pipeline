@@ -4,6 +4,8 @@ import "core:testing"
 import "core:fmt"
 import "core:log"
 import "core:math/noise"
+import "core:math/linalg"
+import "core:math"
 import "../vox"
 
 CHUNK_W :: 256
@@ -39,6 +41,34 @@ getVoxel :: proc(sv: ^SparseVoxels, pos: [3]u32) -> u64 {
     tag:u64 = (1 << u64((pos.x % INNER_CHUNK)+(pos.y%INNER_CHUNK)*INNER_CHUNK+(pos.z%INNER_CHUNK)*INNER_CHUNK*INNER_CHUNK))
 
     return sv.chunks[pos.x / INNER_CHUNK][pos.y / INNER_CHUNK][pos.z / INNER_CHUNK] & tag
+}
+
+minus :: proc(x:u32, y:u32) -> u32 {
+    r := int(x) - int(y)
+    if r < 0 {
+        return 0
+    } else {
+        return u32(r)
+    }
+}
+
+
+putSphere :: proc(sv: ^SparseVoxels, center: [3]u32, radius: u32) {
+    fCenter := [3]f32{f32(center.x),f32(center.y),f32(center.z)}
+    start :[3]u32 = {  minus(center.x, radius), minus(center.y, radius), minus(center.z, radius) }
+    for x:u32 = 0; x < radius*2; x += 1 {
+        for y:u32 = 0; y < radius*2; y += 1 {
+            for z:u32 = 0; z < radius*2; z += 1 {
+                pos:[3]u32 = start + {x,y,z}
+                fPos:[3]f32 = {f32(pos.x),f32(pos.y),f32(pos.z)}
+                if linalg.distance(fCenter, fPos) < f32(radius) {
+                    putVoxel(sv, pos, 1)
+                    log.debug("PUT V", pos)
+                }
+            }
+        }
+    }
+    putVoxel(sv, center, 1)
 }
 
 getTotalChunks :: proc() -> u16 {
