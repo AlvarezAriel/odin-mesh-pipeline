@@ -272,8 +272,8 @@ metal_main :: proc() -> (err: ^NS.Error) {
         render_encoder->setFragmentBuffer(buffer=engine_buffers.camera_buffer,  offset=0, index=0)
 
         render_encoder->drawMeshThreadgroups(
-            MTL.Size { world.CHUNK_W/world.PARTITION_SIZE, world.CHUNK_H/world.PARTITION_SIZE, world.CHUNK_W/world.PARTITION_SIZE}, 
-            MTL.Size { world.PARTITION_SIZE,world.PARTITION_SIZE,world.PARTITION_SIZE }, 
+            MTL.Size { world.CHUNK_W/world.PARTITION_SIZE_W, world.CHUNK_H/world.PARTITION_SIZE_H, world.CHUNK_W/world.PARTITION_SIZE_W}, 
+            MTL.Size { world.PARTITION_SIZE_W,world.PARTITION_SIZE_H,world.PARTITION_SIZE_W }, 
             MTL.Size { world.INNER_CHUNK,world.INNER_CHUNK,world.INNER_CHUNK }
         )
 

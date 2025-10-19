@@ -3,7 +3,8 @@ using namespace metal;
 
 #define CHUNK_W 256
 #define CHUNK_H 64
-#define PARTITION_SIZE 2
+#define PARTITION_SIZE_W 4
+#define PARTITION_SIZE_H 2
 #define INNER_SIZE 4
 
 struct Vertex {
@@ -29,7 +30,7 @@ struct ChunkHeader {
 };
 
 struct Voxels_Data {
-    uchar partitions[CHUNK_W/PARTITION_SIZE][CHUNK_H/PARTITION_SIZE][CHUNK_W/PARTITION_SIZE];
+    uchar partitions[CHUNK_W/PARTITION_SIZE_W][CHUNK_H/PARTITION_SIZE_H][CHUNK_W/PARTITION_SIZE_W];
     uint64_t chunks[CHUNK_W][CHUNK_H][CHUNK_W];
 };
 
@@ -41,7 +42,7 @@ struct Payload {
     uint ox;
     uint oy;
     uint oz;
-    uint3 chunkIdx[PARTITION_SIZE*PARTITION_SIZE*PARTITION_SIZE];
+    uint3 chunkIdx[PARTITION_SIZE_W*PARTITION_SIZE_H*PARTITION_SIZE_W];
 };
 
 using Voxel = metal::mesh<Vertex, TriangleOut, 125, 6 * 64, topology::triangle>;
@@ -504,15 +505,15 @@ void objectMain(
     mesh_grid_properties outGrid)
 {
     if(voxels_data->partitions[objectIndex.x][objectIndex.y][objectIndex.z] > 0) {
-        float3 blockPos = float3(objectIndex * INNER_SIZE * PARTITION_SIZE);
+        float3 blockPos = float3(objectIndex * INNER_SIZE) * float3(PARTITION_SIZE_W,PARTITION_SIZE_H,PARTITION_SIZE_W);
         float vision_cone = dot(normalize(blockPos - camera_data.pos.xyz), normalize(camera_data.look.xyz));
         float distanceToCamera = distance(blockPos + float3(1), camera_data.pos.xyz);
-        if(vision_cone > 0.3 || (distanceToCamera < INNER_SIZE * PARTITION_SIZE)) {
+        if(vision_cone > 0.3 || (distanceToCamera < INNER_SIZE * PARTITION_SIZE_W)) {
             outPayload.ox = objectIndex.x;
             outPayload.oy = objectIndex.y;
             outPayload.oz = objectIndex.z;
 
-            uint3 chunkPos = objectIndex * PARTITION_SIZE + gtid;
+            uint3 chunkPos = objectIndex * uint3(PARTITION_SIZE_W,PARTITION_SIZE_H,PARTITION_SIZE_W) + gtid;
             uint count = 0;
             uint id = 0;
             if(voxels_data->chunks[chunkPos.x][chunkPos.y][chunkPos.z] > 0) {
@@ -567,7 +568,7 @@ void meshMain(
     // uint z =  payload.oz;
 
     uint3 partitionPos = payload.chunkIdx[partitionPosIndex];
-    uint3 globalPos = uint3(payload.ox, payload.oy, payload.oz) * PARTITION_SIZE + partitionPos;
+    uint3 globalPos = uint3(payload.ox, payload.oy, payload.oz) * uint3(PARTITION_SIZE_W,PARTITION_SIZE_H,PARTITION_SIZE_W) + partitionPos;
     uint3 localPos = threadIndex;
     uint primitiveCount = 0;
 
@@ -605,7 +606,7 @@ void putVoxel(device Voxels_Data* sv, uint3 pos) {
     uint64_t chunk = sv->chunks[pos.x / INNER_SIZE][pos.y / INNER_SIZE][pos.z / INNER_SIZE] | (1 << uint64_t((pos.x % INNER_SIZE)+(pos.y%INNER_SIZE)*INNER_SIZE+(pos.z%INNER_SIZE)*INNER_SIZE*INNER_SIZE));
     sv->chunks[pos.x / INNER_SIZE][pos.y / INNER_SIZE][pos.z / INNER_SIZE] = chunk;
 
-    uint partitionContentSize = INNER_SIZE * PARTITION_SIZE;
+    uint3 partitionContentSize = INNER_SIZE * uint3(PARTITION_SIZE_W,PARTITION_SIZE_H,PARTITION_SIZE_W);
     uint3 partitionPos = pos / partitionContentSize;
     sv->partitions[partitionPos.x][partitionPos.y][partitionPos.z] = 1;
 }

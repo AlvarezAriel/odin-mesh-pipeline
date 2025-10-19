@@ -8,7 +8,8 @@ import "../vox"
 
 CHUNK_W :: 256
 CHUNK_H :: 64
-PARTITION_SIZE :: 2
+PARTITION_SIZE_W :: 4
+PARTITION_SIZE_H :: 2
 INNER_CHUNK :: 4
 
 TAG_EMPTY :: 0
@@ -18,7 +19,7 @@ TAG_USED :: 2
 
 // TODO: turn this into an Octree with Morton Z-Ordering
 SparseVoxels :: struct #align(16) {
-    partitions: [CHUNK_W/PARTITION_SIZE][CHUNK_H/PARTITION_SIZE][CHUNK_W/PARTITION_SIZE]u8,
+    partitions: [CHUNK_W/PARTITION_SIZE_W][CHUNK_H/PARTITION_SIZE_H][CHUNK_W/PARTITION_SIZE_W]u8,
     chunks: [CHUNK_W][CHUNK_H][CHUNK_W]u64,
 }
 
@@ -27,7 +28,7 @@ putVoxel :: proc(sv: ^SparseVoxels, pos: [3]u32, material: u8) -> u64 {
     chunk:u64 = sv.chunks[pos.x / INNER_CHUNK][pos.y / INNER_CHUNK][pos.z / INNER_CHUNK] | (1 << u64((pos.x % INNER_CHUNK)+(pos.y%INNER_CHUNK)*INNER_CHUNK+(pos.z%INNER_CHUNK)*INNER_CHUNK*INNER_CHUNK))
     sv.chunks[pos.x / INNER_CHUNK][pos.y / INNER_CHUNK][pos.z / INNER_CHUNK] = chunk
 
-    partitionContentSize:u32 = INNER_CHUNK * PARTITION_SIZE
+    partitionContentSize := [3]u32 {PARTITION_SIZE_W, PARTITION_SIZE_H, PARTITION_SIZE_W} * INNER_CHUNK  
     partitionPos: [3]u32 = pos / partitionContentSize
     sv.partitions[partitionPos.x][partitionPos.y][partitionPos.z] = 1
 
