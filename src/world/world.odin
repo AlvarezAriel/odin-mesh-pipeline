@@ -86,32 +86,16 @@ generate_world :: proc(sv: ^SparseVoxels) {
 load_sponza :: proc(sv: ^SparseVoxels, offset:[3]u32) {
     if v, ok := vox.load_from_file("./assets/sponza.vox", context.temp_allocator); ok {
         count:u32 = 0
-        scene := &v.models[0]
-        load_scene(sv, scene, [3]u32 { 0,0,u32(scene.size.x)* 5 })
+        for scene in v.models {
+            sceneOffset: [3]u32 = { u32(scene.size.x), u32(scene.size.y),u32(scene.size.z) } 
+            count += 1
+            for cube in scene.voxels {
+                // if(cube.pos.y >= CHUNK_H*INNER_CHUNK) { continue } 
 
-        scene = &v.models[1]
-        count += 1
-        load_scene(sv, scene, [3]u32 { 0, 0, u32(scene.size.x) } * 4)
-
-
-        scene = &v.models[2]
-        count += 1
-        load_scene(sv, scene, [3]u32 { 0, 0, u32(scene.size.x) } * 3)
-
-        scene = &v.models[3]
-        count += 1
-        load_scene(sv, scene, [3]u32 { 0, 0, u32(scene.size.x) } * 2)
-
-        scene = &v.models[4]
-        count += 1
-        load_scene(sv, scene, [3]u32 { 0, 0, u32(scene.size.x) } * 1)
-    }
-}
-
-load_scene :: proc(sv: ^SparseVoxels, scene:^vox.Model, offset:[3]u32) {
-    for cube in scene.voxels {
-        basePos :[3]u32 = [3]u32 { u32(cube.pos.y), u32(cube.pos.z), u32(cube.pos.x) } + offset;
-        putVoxel(sv, basePos, 1)
+                basePos :[3]u32 = [3]u32 { u32(cube.pos.x), u32(cube.pos.z), u32(cube.pos.y) } + sceneOffset * count;
+                putVoxel(sv, basePos, 1)
+            }
+        }
     }
 }
 
