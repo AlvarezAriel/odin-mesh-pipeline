@@ -27,6 +27,8 @@ SparseVoxels :: struct #align(16) {
 
 putVoxel :: proc(sv: ^SparseVoxels, pos: [3]u32, material: u8) -> u64 {
     //log.debug("PUT", pos)
+    if(pos.y >= CHUNK_H*INNER_CHUNK || pos.x >= CHUNK_W*INNER_CHUNK || pos.z >= CHUNK_W*INNER_CHUNK) { return 0 }
+
     chunk:u64 = sv.chunks[pos.x / INNER_CHUNK][pos.y / INNER_CHUNK][pos.z / INNER_CHUNK] | (1 << u64((pos.x % INNER_CHUNK)+(pos.y%INNER_CHUNK)*INNER_CHUNK+(pos.z%INNER_CHUNK)*INNER_CHUNK*INNER_CHUNK))
     sv.chunks[pos.x / INNER_CHUNK][pos.y / INNER_CHUNK][pos.z / INNER_CHUNK] = chunk
 
@@ -77,6 +79,53 @@ getTotalChunks :: proc() -> u16 {
 
 generate_world :: proc(sv: ^SparseVoxels) {
 
+    load_sponza(sv, {0,0,0})
+
+}
+
+load_sponza :: proc(sv: ^SparseVoxels, offset:[3]u32) {
+    if v, ok := vox.load_from_file("./assets/sponza.vox", context.temp_allocator); ok {
+        count:u32 = 0
+        scene := &v.models[0]
+        load_scene(sv, scene, [3]u32 { 0,0,u32(scene.size.x)* 5 })
+
+        scene = &v.models[1]
+        count += 1
+        load_scene(sv, scene, [3]u32 { 0, 0, u32(scene.size.x) } * 4)
+
+
+        scene = &v.models[2]
+        count += 1
+        load_scene(sv, scene, [3]u32 { 0, 0, u32(scene.size.x) } * 3)
+
+        scene = &v.models[3]
+        count += 1
+        load_scene(sv, scene, [3]u32 { 0, 0, u32(scene.size.x) } * 2)
+
+        scene = &v.models[4]
+        count += 1
+        load_scene(sv, scene, [3]u32 { 0, 0, u32(scene.size.x) } * 1)
+    }
+}
+
+load_scene :: proc(sv: ^SparseVoxels, scene:^vox.Model, offset:[3]u32) {
+    for cube in scene.voxels {
+        basePos :[3]u32 = [3]u32 { u32(cube.pos.y), u32(cube.pos.z), u32(cube.pos.x) } + offset;
+        putVoxel(sv, basePos, 1)
+    }
+}
+
+putPrism :: proc(sv: ^SparseVoxels, from: [3]u32, to: [3]u32) {
+    for x:u32 = from.x; x < to.x; x += 1 {
+        for y:u32 = from.y; y < to.y; y += 1 {
+            for z:u32 = from.z; z < to.z; z += 1 {
+                putVoxel(sv, {x,y,z}, 1)
+            }
+        }
+    }
+}
+
+test_scene_01:: proc(sv: ^SparseVoxels) {
     for x:f64 = 0; x < CHUNK_W*INNER_CHUNK; x += 1 {
         for z:f64 = 0; z < CHUNK_W*INNER_CHUNK; z += 1 {
             res := noise.noise_2d(34502783, {x / 512,z / 512})
@@ -139,6 +188,19 @@ load_tree :: proc(sv: ^SparseVoxels, offset:[3]u32) {
         }
     }
 }
+
+load_window :: proc(sv: ^SparseVoxels, offset:[3]u32) {
+    if v, ok := vox.load_from_file("./assets/window.vox", context.temp_allocator); ok {
+        scene := v.models[0]
+        for cube in scene.voxels {
+            // if(cube.pos.y >= CHUNK_H*INNER_CHUNK) { continue } 
+
+            basePos :[3]u32 = [3]u32 { u32(cube.pos.x), u32(cube.pos.z), u32(cube.pos.y) } + offset;
+            putVoxel(sv, basePos, 1)
+        }
+    }
+}
+
 
 
 load_model_2 :: proc(sv: ^SparseVoxels, offset:[3]u32) {

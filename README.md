@@ -15,7 +15,7 @@ As of right it's just a mess, so if you came here looking for a nice example, yo
  - There will be no upscaling tricks (unless we can ensure certain level of quality).
  - No hardware raytracing will be used.
 
-References:
+##### References:
  - [Voxel Compression](https://eisenwave.github.io/voxel-compression-docs/) 
  - [Metal by Example](https://metalbyexample.com/mesh-shaders/)
  - Some Metal examples https://github.com/chaoticbob/GraphicsExperiments/blob/main/projects/geometry/113_mesh_shader_instancing_metal/113_mesh_shader_instancing_metal.cpp
@@ -27,9 +27,10 @@ References:
  - [Grid Based Visibility](https://towardsdatascience.com/a-quick-and-clear-look-at-grid-based-visibility-bf63769fbc78/)
  - [Voxel Tracing](https://blog.balintcsala.com/posts/voxel-tracing/)
  - [The Beauty of Bresenham's Algorithm](http://members.chello.at/~easyfilter/bresenham.html)
+ - [Interactive Indirect Illumination Using Voxel Cone Tracing](https://research.nvidia.com/sites/default/files/publications/GIVoxels-pg2011-authors.pdf)
 
  
-Other people making voxel engines:
+##### Other people making voxel engines:
  - https://www.youtube.com/@johnlin9665
  - https://www.youtube.com/@frozein
  - https://www.youtube.com/@_rey
@@ -37,3 +38,7 @@ Other people making voxel engines:
  - https://www.youtube.com/@GabeRundlett
  - https://www.youtube.com/@capslpop
  - https://www.youtube.com/@TheEngineeringMonkey
+
+
+##### Assets:
+ - [Vox Models by kluchek](https://github.com/kluchek/vox-models/tree/master) 

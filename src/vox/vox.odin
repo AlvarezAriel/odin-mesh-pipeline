@@ -12,7 +12,7 @@ import "core:strconv"
 // Structure containing data of a '.vox' file.
 Vox :: struct {
     header:           Header,
-    models:           []Model,
+    models:           [64]Model,
     palette:          Palette,
     // Access with voxel's color_index
     material_palette: Material_Palette,
@@ -100,7 +100,7 @@ load_from_data :: proc(data: []u8, allocator := context.allocator) -> (result: V
         }
     }
 
-    result.models = make([]Model, num_models)
+    //result.models = make([]Model, num_models)
     model_index := 0
 
     for len(data) > 0 {

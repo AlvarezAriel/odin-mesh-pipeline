@@ -148,7 +148,7 @@ float countConeLight(constant Voxels_Data* voxels_data, constant Light_Data* lig
 float topLightCone(constant Voxels_Data* voxels_data, constant Light_Data* light_data, uint3 from, float side) {
     float rayCount = 1;
     float lightAcc = 0;
-    uint steps = 6;
+    uint steps = 16;
     uint amp = 2;
 
     float weighted = 1.0 / (float(steps)*(5 + 2));
@@ -168,7 +168,7 @@ float topLightCone(constant Voxels_Data* voxels_data, constant Light_Data* light
 float lateralLightCone(constant Voxels_Data* voxels_data, constant Light_Data* light_data, uint3 from, float side) {
     float rayCount = 1;
     float lightAcc = 0;
-    uint steps = 6;
+    uint steps = 16;
     uint amp = 2;
 
     float weighted = 1.0 / (float(steps)*(5 + 2));
@@ -189,7 +189,7 @@ float lateralLightCone(constant Voxels_Data* voxels_data, constant Light_Data* l
 float frontalLightCone(constant Voxels_Data* voxels_data, constant Light_Data* light_data, uint3 from, float front) {
     float rayCount = 1;
     float lightAcc = 0;
-    uint steps = 6;
+    uint steps = 16;
     uint amp = 2;
 
     float weighted = 1.0 / (float(steps)*(5 + 2));
