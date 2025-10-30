@@ -190,38 +190,65 @@ float countConeLight(constant Voxels_Data* voxels_data, constant Light_Data* lig
 
 uint4 is_hit(constant Camera_Data&   camera_data, constant Voxels_Data* voxels_data, constant Light_Data* light_data, uint3 from, float3 dir, uint count)
 {
-
     int3 f = int3(from);
     float m = max3(abs(dir.x), abs(dir.y), abs(dir.z));
     float st = 1.0 / m;
     float3 step = dir * st;
     uint maxY =  CHUNK_H*INNER_SIZE;
     uint maxW =  CHUNK_W*INNER_SIZE;
-    bool should_set_shadow = false;
 
-    uint i = 0;
-    float lightCount = 0;
-    uint3 prev;
+    uint i = 1;
+    uint3 hitPoint;
+    uint3 next;
     for(; i < count; i++) {
-        uint3 next = uint3(f + int3(trunc(step * i)));
-        if(get_voxel(voxels_data, next) > 0) {
-            return uint4(prev, 1.0);
+        hitPoint = next;
+        next = uint3(f - int3(trunc(step * i)));
+        if(next.x >= maxW || next.y >= maxY || next.z >= maxW) {
+            break;
         }
-        prev = next;
+        uint64_t chunk = voxels_data->chunks[next.x/INNER_SIZE][next.y/INNER_SIZE][next.z/INNER_SIZE];
+        if(chunk == 0) {
+            
+            if(voxels_data->partitions[next.x/PARTITION_SIZE_W][next.y/PARTITION_SIZE_H][next.z/PARTITION_SIZE_W] == 0) {
+                uint3 c = min3(next.x/PARTITION_SIZE_W, next.y/PARTITION_SIZE_H, next.z/PARTITION_SIZE_W);
+            }
+
+            uint3 prev = uint3(next.x/INNER_SIZE, next.y/INNER_SIZE, next.z/INNER_SIZE);
+            uint k = i + 1;
+            for(; ;k++){
+                next = uint3(f - int3(trunc(step * k)));
+                uint3 c = min3(next.x/INNER_SIZE, next.y/INNER_SIZE, next.z/INNER_SIZE);
+                if(c.x != prev.x || c.y != prev.y || c.z != prev.z) {
+                    i = k - 1;
+                    break;
+                }
+            }
+            continue;
+        }
+
+        if(get_voxel_from_chunk(voxels_data, next, chunk) > 0) {
+            return uint4(hitPoint, 1);
+        }
     }
 
     return uint4(0);
 }
 
-float topLightCone(constant Camera_Data&   camera_data, constant Voxels_Data* voxels_data, constant Light_Data* light_data, uint3 from, float side, uint steps, uint coneRays) {
-    float rayCount = 1;
+float topLightCone(constant Camera_Data&   camera_data, constant Voxels_Data* voxels_data, constant Light_Data* light_data, uint3 from, float side, uint steps, uint coneRays, float3 normal) {
     float lightAcc = 0;
-    uint amp = 2;
 
-    float weighted = 1.0 / (float(steps)*(9 + 2));
-    uint3 starting = uint3(int3(from) + int3(0, side,0));
+    uint3 starting = uint3(int3(from) + int3(0, side ,0));
     
-    float directLight = castIntersect(voxels_data, from + uint3(0,1,0), -camera_data.sun.xyz, 128);
+    float3 sunAngle = normalize(camera_data.sun.xyz);
+    float directAngle = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
+
+    float directLight = 0;
+    if(directAngle > 0) {
+        directLight = castIntersect(voxels_data, from + uint3(0,1,0), -camera_data.sun.xyz, 128);
+        if(directLight == 1.0) {
+            return 1.0;
+        }
+    }
     float indirectLight = 0;
 
     float rays = float(coneRays);
@@ -230,9 +257,118 @@ float topLightCone(constant Camera_Data&   camera_data, constant Voxels_Data* vo
         float r = i*rotation;
         float x = cos(r);
         float z = sin(r);
-        uint4 hit = is_hit(camera_data, voxels_data, light_data, starting, normalize(float3(x, side, z)), steps);
+        uint4 hit = is_hit(camera_data, voxels_data, light_data, starting, -normalize(float3(x, side, z)), steps);
         if(hit.w != 0) {
-            indirectLight += castIntersect(voxels_data, hit.xyz, -camera_data.sun.xyz, 128);
+            indirectLight += 1.0 - light_data->chunks[hit.x][hit.y][hit.z];
+        }
+    }
+
+    float ambient = 0;
+    if(directAngle > 0.1) {
+        for(float i = 0; i < rays/2; i++) {
+            float r = i*rotation;
+            float x = cos(r);
+            float z = sin(r);
+            ambient += countConeLight(voxels_data, light_data, starting, normalize(float3(x, side, z)), 6);
+        }
+    }
+
+    ambient = ambient / rays;
+
+    float neight = 0;
+    float bias = 0.07;
+    neight += bias - min(float(get_voxel(voxels_data, uint3(int3(from) + int3(0, 0, +1)) )), 1.0)*bias;
+    neight += bias - min(float(get_voxel(voxels_data, uint3(int3(from) + int3(0,  0, -1)) )), 1.0)*bias;
+    neight += bias - min(float(get_voxel(voxels_data, uint3(int3(from) + int3(+1, 0,  0)) )), 1.0)*bias;
+    neight += bias - min(float(get_voxel(voxels_data, uint3(int3(from) + int3(-1, 0,  0)) )), 1.0)*bias;
+
+    float ambientBias = directAngle*(0.3 + neight);
+
+    lightAcc = indirectLight / rays;
+
+    float total = ambient*ambientBias+lightAcc*0.5 + directLight*0.8;
+
+    return min(total, 1.0);
+}
+
+float lateralLightCone(constant Camera_Data&   camera_data, constant Voxels_Data* voxels_data, constant Light_Data* light_data, uint3 from, float side, uint steps, uint coneRays, float3 normal) {
+     float lightAcc = 0;
+
+    uint3 starting = uint3(int3(from) + int3(side, 0 ,0));
+    
+    float3 sunAngle = normalize(camera_data.sun.xyz);
+    float directAngle = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
+
+    float directLight = 0;
+    if(directAngle > 0) {
+        directLight = castIntersect(voxels_data, from + uint3(1,0,0), -camera_data.sun.xyz, 128);
+    }
+    float indirectLight = 0;
+
+    float rays = float(coneRays);
+    float rotation = (PI*2)/rays;
+    for(float i = 0; i < rays;i++) {
+        float r = i*rotation;
+        float x = cos(r);
+        float z = sin(r);
+        uint4 hit = is_hit(camera_data, voxels_data, light_data, starting, -normalize(float3(side, x, z)), steps);
+        if(hit.w != 0) {
+            indirectLight += 1.0 - light_data->chunks[hit.x][hit.y][hit.z];
+        }
+    }
+
+    float ambient = 0;
+    if(directAngle > 0.2) {
+        for(float i = 0; i < rays/2; i++) {
+            float r = i*rotation;
+            float x = cos(r);
+            float z = sin(r);
+            ambient += countConeLight(voxels_data, light_data, starting, normalize(float3(side, x, z)), 6);
+        }
+    }
+
+    ambient = ambient / rays;
+
+    float neight = 0;
+    float bias = 0.07;
+    neight += bias - min(float(get_voxel(voxels_data, uint3(int3(from) + int3(0,  0, +1)) )), 1.0)*bias;
+    neight += bias - min(float(get_voxel(voxels_data, uint3(int3(from) + int3(0,  0, -1)) )), 1.0)*bias;
+    neight += bias - min(float(get_voxel(voxels_data, uint3(int3(from) + int3(0, +1,  0)) )), 1.0)*bias;
+    neight += bias - min(float(get_voxel(voxels_data, uint3(int3(from) + int3(0, -1,  0)) )), 1.0)*bias;
+
+    float ambientBias = directAngle*(0.3 + neight);
+
+    lightAcc = indirectLight / rays;
+
+    float total = ambient*ambientBias+lightAcc*0.5 + directLight*0.8;
+
+    return min(total, 1.0);
+}
+
+
+float frontalLightCone(constant Camera_Data&   camera_data, constant Voxels_Data* voxels_data, constant Light_Data* light_data, uint3 from, float side, uint steps, uint coneRays, float3 normal) {
+     float lightAcc = 0;
+
+    uint3 starting = uint3(int3(from) + int3(0 ,0, side));
+    
+    float3 sunAngle = normalize(camera_data.sun.xyz);
+    float directAngle = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
+
+    float directLight = 0;
+    if(directAngle > 0.2) {
+        directLight = castIntersect(voxels_data, from, -camera_data.sun.xyz, 128);
+    }
+    float indirectLight = 0;
+
+    float rays = float(coneRays);
+    float rotation = (PI*2)/rays;
+    for(float i = 0; i < rays;i++) {
+        float r = i*rotation;
+        float x = cos(r);
+        float z = sin(r);
+        uint4 hit = is_hit(camera_data, voxels_data, light_data, starting, -normalize(float3(x, z, side)), steps);
+        if(hit.w != 0) {
+            indirectLight += 1.0 - light_data->chunks[hit.x][hit.y][hit.z];
         }
     }
 
@@ -241,57 +377,27 @@ float topLightCone(constant Camera_Data&   camera_data, constant Voxels_Data* vo
         float r = i*rotation;
         float x = cos(r);
         float z = sin(r);
-        ambient += countConeLight(voxels_data, light_data, starting, normalize(float3(x, side, z)), 4);
+        ambient += countConeLight(voxels_data, light_data, starting, normalize(float3(x*2, z*2, side)), 6);
     }
 
+    
     ambient = ambient / rays;
+
+    float neight = 0;
+    float bias = 0.07;
+    neight += bias - min(float(get_voxel(voxels_data, uint3(int3(from) + int3(  0, +1, 0)) )), 1.0)*bias;
+    neight += bias - min(float(get_voxel(voxels_data, uint3(int3(from) + int3(  0, -1, 0)) )), 1.0)*bias;
+    neight += bias - min(float(get_voxel(voxels_data, uint3(int3(from) + int3( +1,  0, 0)) )), 1.0)*bias;
+    neight += bias - min(float(get_voxel(voxels_data, uint3(int3(from) + int3( -1,  0, 0)) )), 1.0)*bias;
+
+    float ambientBias = directAngle*(0.3 + neight);
 
     lightAcc = indirectLight / rays;
 
-    float total = ((ambient+lightAcc)/2 + directLight) / 2;
+    float total = ambient*ambientBias+lightAcc*0.5 + directLight*0.8;
 
     return min(total, 1.0);
 }
-
-float lateralLightCone(constant Camera_Data&   camera_data, constant Voxels_Data* voxels_data, constant Light_Data* light_data, uint3 from, float side, uint steps) {
-    float rayCount = 1;
-    float lightAcc = 0;
-    uint amp = 2;
-
-    float weighted = 1.0 / (float(steps)*(5 + 2));
-    uint3 starting = uint3(int3(from) + int3(side,0,0));
-    
-    lightAcc += light_data->chunks[starting.x][starting.y][starting.z] * weighted * 2;
-
-    lightAcc += countConeLight(voxels_data, light_data, starting, normalize(float3(side, 0,  0)), steps) * weighted;
-    lightAcc += countConeLight(voxels_data, light_data, starting, normalize(float3(side,  -amp,  0)), steps) * weighted;
-    lightAcc += countConeLight(voxels_data, light_data, starting, normalize(float3(side,  amp,  0)), steps) * weighted;
-    lightAcc += countConeLight(voxels_data, light_data, starting, normalize(float3(side, 0,  -amp)), steps) * weighted;
-    lightAcc += countConeLight(voxels_data, light_data, starting, normalize(float3(side,  0, amp)), steps) * weighted;
-
-    return lightAcc;
-}
-
-
-float frontalLightCone(constant Camera_Data&   camera_data, constant Voxels_Data* voxels_data, constant Light_Data* light_data, uint3 from, float front, uint steps) {
-    float rayCount = 1;
-    float lightAcc = 0;
-    uint amp = 2;
-
-    float weighted = 1.0 / (float(steps)*(5 + 2));
-    uint3 starting = uint3(int3(from) + int3(0,0,front));
-    
-    lightAcc += light_data->chunks[starting.x][starting.y][starting.z] * weighted * 2;
-
-    lightAcc += countConeLight(voxels_data, light_data, starting, normalize(float3(0,  0, front)), steps) * weighted;
-    lightAcc += countConeLight(voxels_data, light_data, starting, normalize(float3(-amp,  0, front)), steps) * weighted;
-    lightAcc += countConeLight(voxels_data, light_data, starting, normalize(float3(amp,  0, front)), steps) * weighted;
-    lightAcc += countConeLight(voxels_data, light_data, starting, normalize(float3(0,  -amp, front)), steps) * weighted;
-    lightAcc += countConeLight(voxels_data, light_data, starting, normalize(float3(0, amp, front)), steps) * weighted;
-
-    return lightAcc;
-}
-
 
 uint pushCube(
     Voxel outMesh, 
@@ -378,8 +484,8 @@ uint pushCube(
         baseColor = float3(1.0, 0.3, 0.25);
     }
 
-    uint lightSteps = 32;
-    float lightLodDistance = 512;
+    uint lightSteps = 16;
+    float lightLodDistance = 600;
     float renderDistance = distance(pos.xyz, camera_data.pos.xyz);
 
     lightSteps = uint(mix(lightSteps, 4, renderDistance/max(renderDistance,lightLodDistance)));
@@ -390,22 +496,22 @@ uint pushCube(
         // Back
         float4 normal = float4(0.0, 0.0, -1.0, 0.0);
         float t = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
-        t = mix(normalStrenght, 1.0, t);
+        //t = mix(normalStrenght, 1.0, t);
 
-        float l = frontalLightCone(camera_data, voxels_data, light_data, worldPos.xyz, -1, lightSteps);
+        float l = frontalLightCone(camera_data, voxels_data, light_data, worldPos.xyz, -1, lightSteps, coneRays, normal.xyz);
         tone.xyz = baseColor * l;
 
         outMesh.set_index(midx++, vid0);
         outMesh.set_index(midx++, vid1);
         outMesh.set_index(midx++, vid2);
-        quads[pidx].Color = float4(tone.rgb * t, normalizedDist);
+        quads[pidx].Color = float4(tone.rgb, normalizedDist);
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
 
         outMesh.set_index(midx++, vid0);
         outMesh.set_index(midx++, vid2);
         outMesh.set_index(midx++, vid3);
-        quads[pidx].Color = float4(tone.rgb * t, normalizedDist);
+        quads[pidx].Color = float4(tone.rgb, normalizedDist);
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
         triangle_count += 2;
@@ -415,22 +521,22 @@ uint pushCube(
         // Right
         float4 normal = float4(1.0, 0.0, 0.0, 0.0);
         float t = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
-        t = mix(normalStrenght, 1.0, t);
+        //t = mix(normalStrenght, 1.0, t);
 
-        float l = lateralLightCone(camera_data, voxels_data, light_data, worldPos.xyz, 1, lightSteps);
+        float l = lateralLightCone(camera_data, voxels_data, light_data, worldPos.xyz, 1, lightSteps, coneRays, normal.xyz);
         tone.xyz = baseColor * l;
 
         outMesh.set_index(midx++, vid7);
         outMesh.set_index(midx++, vid3);
         outMesh.set_index(midx++, vid2);
-        quads[pidx].Color = float4(tone.rgb * t, normalizedDist);
+        quads[pidx].Color = float4(tone.rgb, normalizedDist);
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
 
         outMesh.set_index(midx++, vid6);
         outMesh.set_index(midx++, vid7);
         outMesh.set_index(midx++, vid2);
-        quads[pidx].Color = float4(tone.rgb * t, normalizedDist);
+        quads[pidx].Color = float4(tone.rgb, normalizedDist);
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
         triangle_count += 2;
@@ -440,22 +546,22 @@ uint pushCube(
         // Front
         float4 normal = float4(0.0, 0.0, 1.0, 0.0);
         float t = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
-        t = mix(normalStrenght, 1.0, t);
+        //t = mix(normalStrenght, 1.0, t);
 
-        float l = frontalLightCone(camera_data, voxels_data, light_data, worldPos.xyz, 1, lightSteps);
+        float l = frontalLightCone(camera_data, voxels_data, light_data, worldPos.xyz, 1, lightSteps, coneRays, normal.xyz);
         tone.xyz = baseColor * l;
 
         outMesh.set_index(midx++, vid5);
         outMesh.set_index(midx++, vid7);
         outMesh.set_index(midx++, vid6);
-        quads[pidx].Color = float4(tone.rgb * t, normalizedDist);
+        quads[pidx].Color = float4(tone.rgb, normalizedDist);
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
 
         outMesh.set_index(midx++, vid5);
         outMesh.set_index(midx++, vid4);
         outMesh.set_index(midx++, vid7);
-        quads[pidx].Color = float4(tone.rgb * t, normalizedDist);
+        quads[pidx].Color = float4(tone.rgb, normalizedDist);
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
         triangle_count += 2;
@@ -465,22 +571,22 @@ uint pushCube(
         // Bottom
         float4 normal = float4(0.0, -1.0, 0.0, 0.0);
         float t = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
-        t = mix(normalStrenght, 1.0, t);
+        //t = mix(normalStrenght, 1.0, t);
 
-        float l = topLightCone(camera_data, voxels_data, light_data, worldPos.xyz, -1, lightSteps / 2, 4);
+        float l = topLightCone(camera_data, voxels_data, light_data, worldPos.xyz, -1, lightSteps / 2, 4, normal.xyz);
         tone.xyz = baseColor * l;
 
         outMesh.set_index(midx++, vid5);
         outMesh.set_index(midx++, vid6);
         outMesh.set_index(midx++, vid2);
-        quads[pidx].Color = float4(tone.rgb * t, normalizedDist);
+        quads[pidx].Color = float4(tone.rgb, normalizedDist);
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
 
         outMesh.set_index(midx++, vid5);
         outMesh.set_index(midx++, vid2);
         outMesh.set_index(midx++, vid1);
-        quads[pidx].Color = float4(tone.rgb * t, normalizedDist);
+        quads[pidx].Color = float4(tone.rgb, normalizedDist);
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
         triangle_count += 2;
@@ -490,22 +596,22 @@ uint pushCube(
         // Left
         float4 normal = float4(-1.0, 0.0, 0.0, 0.0);
         float t = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
-        t = mix(normalStrenght, 1.0, t);
+        //t = mix(normalStrenght, 1.0, t);
 
-        float l = lateralLightCone(camera_data, voxels_data, light_data, worldPos.xyz, -1, lightSteps);
+        float l = lateralLightCone(camera_data, voxels_data, light_data, worldPos.xyz, -1, lightSteps, coneRays, normal.xyz);
         tone.xyz = baseColor * l;
 
         outMesh.set_index(midx++, vid0);
         outMesh.set_index(midx++, vid4);
         outMesh.set_index(midx++, vid1);
-        quads[pidx].Color = float4(tone.rgb * t, normalizedDist);
+        quads[pidx].Color = float4(tone.rgb , normalizedDist);
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
 
         outMesh.set_index(midx++, vid4);
         outMesh.set_index(midx++, vid5);
         outMesh.set_index(midx++, vid1);
-        quads[pidx].Color = float4(tone.rgb * t, normalizedDist);
+        quads[pidx].Color = float4(tone.rgb, normalizedDist);
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
         triangle_count += 2;
@@ -515,22 +621,22 @@ uint pushCube(
         // Top
         float4 normal = float4(0.0, 1.0, 0.0, 0.0);
         float t = (1.0 + dot(sunAngle, normal.rgb)) * 0.5;
-        t = mix(normalStrenght, 1.0, t);
+        //t = mix(normalStrenght, 1.0, t);
 
-        float l = topLightCone(camera_data, voxels_data, light_data, worldPos.xyz, 1, lightSteps, coneRays);
+        float l = topLightCone(camera_data, voxels_data, light_data, worldPos.xyz, 1, lightSteps, coneRays, normal.xyz);
         tone.xyz = baseColor * l;
 
         outMesh.set_index(midx++, vid7);
         outMesh.set_index(midx++, vid0);
         outMesh.set_index(midx++, vid3);
-        quads[pidx].Color = float4(tone.rgb * t, normalizedDist);
+        quads[pidx].Color = float4(tone.rgb, normalizedDist);
         outMesh.set_primitive(pidx, quads[pidx]);
         pidx++;
 
         outMesh.set_index(midx++, vid4);
         outMesh.set_index(midx++, vid0);
         outMesh.set_index(midx++, vid7);
-        quads[pidx].Color = float4(tone.rgb * t, normalizedDist);
+        quads[pidx].Color = float4(tone.rgb, normalizedDist);
         outMesh.set_primitive(pidx, quads[pidx]);
         triangle_count += 2;   
     }
