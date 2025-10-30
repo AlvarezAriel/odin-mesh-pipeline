@@ -14,11 +14,6 @@ PARTITION_SIZE_W :: 4
 PARTITION_SIZE_H :: 2
 INNER_CHUNK :: 4
 
-TAG_EMPTY :: 0
-TAG_FULL :: 1
-TAG_USED :: 2
-
-
 // TODO: turn this into an Octree with Morton Z-Ordering
 SparseVoxels :: struct #align(16) {
     partitions: [CHUNK_W/PARTITION_SIZE_W][CHUNK_H/PARTITION_SIZE_H][CHUNK_W/PARTITION_SIZE_W]u8,
@@ -79,7 +74,7 @@ getTotalChunks :: proc() -> u16 {
 
 generate_world :: proc(sv: ^SparseVoxels) {
 
-    load_sponza(sv, {0,0,0})
+    test_scene_01(sv)
 
 }
 
